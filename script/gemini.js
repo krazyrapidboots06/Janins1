@@ -5,10 +5,10 @@ module.exports.config = {
   version: "3.0.0",
   hasPermssion: 0,
   credits: "Yasis",
-  description: "Free AI chat + image description",
-  commandCategory: "fun",
-  usages: "gemini <question> or send a photo",
-  cooldowns: 3
+  description: "ask a question",
+  commandCategory: "search",
+  usages: "gemini <ask a questions> made by yasis",
+  cooldowns: 2
 };
 
 // simple memory per thread
