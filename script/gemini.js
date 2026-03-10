@@ -36,7 +36,7 @@ module.exports.run = async function ({ api, event, args }) {
 
     if (!prompt) {
       return api.sendMessage(
-        "📌 Usage:\n• ai <question>\n• send a photo to describe it",
+        "📌 Usage:\n• ai <ask a question>\n• yasis describe it",
         threadID,
         messageID
       );
