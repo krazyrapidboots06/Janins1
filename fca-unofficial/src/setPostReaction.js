@@ -4,7 +4,7 @@ var utils = require("../utils");
 var log = require("npmlog");
 
 module.exports = function (defaultFuncs, api, ctx) {
-  return function unsendMessage(postID, type, callback) {
+  return function setPostReaction(postID, type, callback) {
     var resolveFunc = function () { };
     var rejectFunc = function () { };
     var returnPromise = new Promise(function (resolve, reject) {
@@ -13,9 +13,9 @@ module.exports = function (defaultFuncs, api, ctx) {
     });
 
     if (!callback) {
-      callback = function (err, friendList) {
+      callback = function (err, data) {
         if (err) return rejectFunc(err);
-        resolveFunc(friendList);
+        resolveFunc(data);
       };
     }
 
@@ -58,7 +58,6 @@ module.exports = function (defaultFuncs, api, ctx) {
         log.error("setPostReaction", err);
         return callback(err);
       });
-
     return returnPromise;
   };
 };

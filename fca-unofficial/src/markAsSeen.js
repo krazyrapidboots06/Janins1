@@ -19,10 +19,10 @@ module.exports = function (defaultFuncs, api, ctx) {
     });
 
     if (!callback) {
-      callback = function (err, friendList) {
+      callback = function (err, data) {
         if (err) return rejectFunc(err);
 
-        resolveFunc(friendList);
+        resolveFunc(data);
       };
     }
 
@@ -36,16 +36,13 @@ module.exports = function (defaultFuncs, api, ctx) {
       .then(utils.parseAndCheckLogin(ctx, defaultFuncs))
       .then(function (resData) {
         if (resData.error) throw resData;
-
         return callback();
       })
       .catch(function (err) {
         log.error("markAsSeen", err);
         if (utils.getType(err) == "Object" && err.error === "Not logged in.") ctx.loggedIn = false;
-
         return callback(err);
       });
-
     return returnPromise;
   };
 };

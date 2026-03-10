@@ -43,8 +43,7 @@ module.exports = function (defaultFuncs, api, ctx) {
     // resolve all promises
     bluebird
       .all(uploads)
-      .then(resData => callback(null, resData)
-      )
+      .then(resData => callback(null, resData))
       .catch(function (err) {
         log.error("uploadAttachment", err);
         return callback(err);
@@ -246,9 +245,9 @@ module.exports = function (defaultFuncs, api, ctx) {
     });
 
     if (!callback) {
-      callback = function (err, friendList) {
+      callback = function (err, data) {
         if (err) return rejectFunc(err);
-        resolveFunc(friendList);
+        resolveFunc(data);
       };
     }
 
@@ -315,7 +314,6 @@ module.exports = function (defaultFuncs, api, ctx) {
         )
       )
     );
-
     return returnPromise;
   };
 };

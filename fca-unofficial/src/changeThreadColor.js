@@ -49,7 +49,6 @@ module.exports = function (defaultFuncs, api, ctx) {
       .then(utils.parseAndCheckLogin(ctx, defaultFuncs))
       .then(function (resData) {
         if (resData[resData.length - 1].error_results > 0) throw resData[0].o0.errors;
-
         return callback();
       })
       .catch(function (err) {

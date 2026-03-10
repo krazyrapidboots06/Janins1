@@ -5,11 +5,8 @@ var log = require("npmlog");
 
 module.exports = function (defaultFuncs, api, ctx) {
   return function setTitle(newTitle, threadID, callback) {
-    if (
-      !callback &&
-      (utils.getType(threadID) === "Function" ||
-        utils.getType(threadID) === "AsyncFunction")
-    ) throw { error: "please pass a threadID as a second argument." };
+    if (!callback && (utils.getType(threadID) === "Function" || utils.getType(threadID) === "AsyncFunction"))
+      throw { error: "please pass a threadID as a second argument." };
 
 
     var resolveFunc = function () { };
@@ -20,9 +17,9 @@ module.exports = function (defaultFuncs, api, ctx) {
     });
 
     if (!callback) {
-      callback = function (err, friendList) {
+      callback = function (err, data) {
         if (err) return rejectFunc(err);
-        resolveFunc(friendList);
+        resolveFunc(data);
       };
     }
 
@@ -68,7 +65,6 @@ module.exports = function (defaultFuncs, api, ctx) {
         log.error("setTitle", err);
         return callback(err);
       });
-
     return returnPromise;
   };
 };

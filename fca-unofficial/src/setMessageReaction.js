@@ -13,9 +13,9 @@ module.exports = function (defaultFuncs, api, ctx) {
     });
 
     if (!callback) {
-      callback = function (err, friendList) {
+      callback = function (err, data) {
         if (err) return rejectFunc(err);
-        resolveFunc(friendList);
+        resolveFunc(data);
       };
     }
 
@@ -87,12 +87,7 @@ module.exports = function (defaultFuncs, api, ctx) {
     };
 
     defaultFuncs
-      .postFormData(
-        "https://www.facebook.com/webgraphql/mutation/",
-        ctx.jar,
-        {},
-        qs
-      )
+      .postFormData("https://www.facebook.com/webgraphql/mutation/", ctx.jar, {}, qs)
       .then(utils.parseAndCheckLogin(ctx.jar, defaultFuncs))
       .then(function (resData) {
         if (!resData) throw { error: "setReaction returned empty object." };
@@ -103,7 +98,6 @@ module.exports = function (defaultFuncs, api, ctx) {
         log.error("setReaction", err);
         return callback(err);
       });
-
     return returnPromise;
   };
 };

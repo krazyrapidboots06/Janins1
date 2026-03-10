@@ -13,9 +13,9 @@ module.exports = function (defaultFuncs, api, ctx) {
     });
 
     if (!callback) {
-      callback = function (err, friendList) {
+      callback = function (err, data) {
         if (err) return rejectFunc(err);
-        resolveFunc(friendList);
+        resolveFunc(data);
       };
     }
 
@@ -31,7 +31,6 @@ module.exports = function (defaultFuncs, api, ctx) {
         log.error("resolvePhotoUrl", err);
         return callback(err);
       });
-
     return returnPromise;
   };
 };

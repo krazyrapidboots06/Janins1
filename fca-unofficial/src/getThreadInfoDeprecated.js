@@ -4,53 +4,43 @@ var utils = require("../utils");
 var log = require("npmlog");
 
 module.exports = function (defaultFuncs, api, ctx) {
-  return function getThreadInfo(threadID, callback) {
-    var resolveFunc = function () { };
-    var rejectFunc = function () { };
-    var returnPromise = new Promise(function (resolve, reject) {
-      resolveFunc = resolve;
-      rejectFunc = reject;
-    });
-
-    if (!callback) {
-      callback = function (err, friendList) {
-        if (err) return rejectFunc(err);
-        resolveFunc(friendList);
-      };
+  return function getThreadList(start, end, type, callback) {
+    if (utils.getType(callback) === "Undefined") {
+      if (utils.getType(end) !== "Number") throw { error: "Please pass a number as a second argument." };
+      else if (utils.getType(type) === "Function" || utils.getType(type) === "AsyncFunction") {
+        callback = type;
+        type = "inbox"; //default to inbox
+      }
+      else if (utils.getType(type) !== "String") throw { error: "Please pass a String as a third argument. Your options are: inbox, pending, and archived" };
+      else throw { error: "getThreadList: need callback" };
     }
+
+    if (type === "archived") type = "action:archived";
+    else if (type !== "inbox" && type !== "pending" && type !== "other") throw { error: "type can only be one of the following: inbox, pending, archived, other" };
+
+
+    if (end <= start) end = start + 20;
 
     var form = {
       client: "mercury"
     };
 
-    api.getUserInfo(threadID, function (err, userRes) {
-      if (err) return callback(err);
-      var key = Object.keys(userRes).length > 0 ? "user_ids" : "thread_fbids";
-      form["threads[" + key + "][0]"] = threadID;
+    form[type + "[offset]"] = start;
+    form[type + "[limit]"] = end - start;
 
-      if (ctx.globalOptions.pageId) form.request_user_id = ctx.globalOptions.pageId;
+    if (ctx.globalOptions.pageID) form.request_user_id = ctx.globalOptions.pageID;
 
-      defaultFuncs
-        .post("https://www.facebook.com/ajax/mercury/thread_info.php", ctx.jar, form)
-        .then(utils.parseAndCheckLogin(ctx, defaultFuncs))
-        .then(function (resData) {
-          if (resData.error) throw resData;
-          else if (!resData.payload) throw { error: "Could not retrieve thread Info." };
-
-          var threadData = resData.payload.threads[0];
-          var userData = userRes[threadID];
-
-          if (threadData == null) throw { error: "ThreadData is null" };
-
-          threadData.name = userData != null && userData.name != null ? userData.name : threadData.name;
-          threadData.image_src = userData != null && userData.thumbSrc != null ? userData.thumbSrc : threadData.image_src;
-          callback(null, utils.formatThread(threadData));
-        })
-        .catch(function (err) {
-          log.error("getThreadInfo", err);
-          return callback(err);
-        });
-    });
-    return returnPromise;
+    defaultFuncs
+      .post("https://www.facebook.com/ajax/mercury/threadlist_info.php", ctx.jar, form)
+      .then(utils.parseAndCheckLogin(ctx, defaultFuncs))
+      .then(function (resData) {
+        if (resData.error) throw resData;
+        log.verbose("getThreadList", JSON.stringify(resData.payload.threads));
+        return callback(null, (resData.payload.threads || []).map(utils.formatThread));
+      })
+      .catch(function (err) {
+        log.error("getThreadList", err);
+        return callback(err);
+      });
   };
 };

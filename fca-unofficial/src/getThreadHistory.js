@@ -525,7 +525,6 @@ module.exports = function (defaultFuncs, api, ctx) {
         // failure one.
         // @TODO What do we do in this case?
         if (resData[resData.length - 1].error_results !== 0) throw new Error("There was an error_result.");
-
         callback(null, formatMessagesGraphQLResponse(resData[0]));
       })
       .catch(function (err) {

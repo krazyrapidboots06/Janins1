@@ -65,7 +65,6 @@ module.exports = function (defaultFuncs, api, ctx) {
         if (!resData) throw { error: "Add to group failed." };
         if (resData.error) throw resData;
 
-
         return callback();
       })
       .catch(function (err) {

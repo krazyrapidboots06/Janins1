@@ -36,6 +36,6 @@ module.exports = function (_defaultFuncs, _api, _ctx) {
     Berry: "164535220883264",
     Citrus: "370940413392601",
     Candy: "205488546921017",
-    //StarWars:       "809305022860427" Removed.
+    //StarWars: "809305022860427" Removed.
   };
 };

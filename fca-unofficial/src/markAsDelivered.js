@@ -13,17 +13,16 @@ module.exports = function (defaultFuncs, api, ctx) {
     });
 
     if (!callback) {
-      callback = function (err, friendList) {
+      callback = function (err, data) {
         if (err) return rejectFunc(err);
 
-        resolveFunc(friendList);
+        resolveFunc(data);
       };
     }
 
     if (!threadID || !messageID) return callback("Error: messageID or threadID is not defined");
 
     var form = {};
-
     form["message_ids[0]"] = messageID;
     form["thread_ids[" + threadID + "][0]"] = messageID;
 

@@ -199,6 +199,7 @@ function buildAPI(globalOptions, html, jar) {
     'setTitle',
     'threadColors',
     'unsendMessage',
+    'unfriend',
 
     // HTTP
     'httpGet',
@@ -214,10 +215,6 @@ function buildAPI(globalOptions, html, jar) {
 
   // Load all api functions in a loop
   apiFuncNames.map(v => api[v] = require('./src/' + v)(defaultFuncs, api, ctx));
-
-  //Removing original `listen` that uses pull.
-  //Map it to listenMqtt instead for backward compatibly.
-  api.listen = api.listenMqtt;
 
   return [ctx, defaultFuncs, api];
 }
@@ -293,8 +290,7 @@ function makeLogin(jar, email, password, loginOptions, callback, prCallback) {
               var form = utils.arrToForm(arr);
               if (html.indexOf("checkpoint/?next") > -1) {
                 setTimeout(() => {
-                  checkVerified = setInterval((_form) => {
-                  }, 5000, {
+                  checkVerified = setInterval((_form) => { }, 5000, {
                     fb_dtsg: form.fb_dtsg,
                     jazoest: form.jazoest,
                     dpr: 1
@@ -506,7 +502,7 @@ function login(loginData, options, callback) {
 
   var globalOptions = {
     selfListen: false,
-    listenEvents: false,
+    listenEvents: true,
     listenTyping: false,
     updatePresence: false,
     forceLogin: false,
@@ -540,4 +536,3 @@ function login(loginData, options, callback) {
 }
 
 module.exports = login;
-

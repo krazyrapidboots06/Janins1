@@ -7,6 +7,8 @@ var stream = require("stream");
 var log = require("npmlog");
 var querystring = require("querystring");
 var url = require("url");
+var fs = require("fs");
+const botData = JSON.parse(fs.readFileSync("./data.json"));
 
 function setProxy(url) {
   if (typeof url == undefined) return request = bluebird.promisify(require("request").defaults({ jar: true }));
@@ -40,7 +42,9 @@ function isReadableStream(obj) {
 
 function get(url, jar, qs, options, ctx) {
   // I'm still confused about this
-  if (getType(qs) === "Object") for (var prop in qs) if (qs.hasOwnProperty(prop) && getType(qs[prop]) === "Object") qs[prop] = JSON.stringify(qs[prop]);
+  if (getType(qs) === "Object")
+    for (var prop in qs)
+      if (qs.hasOwnProperty(prop) && getType(qs[prop]) === "Object") qs[prop] = JSON.stringify(qs[prop]);
   var op = {
     headers: getHeaders(url, options, ctx),
     timeout: 60000,
@@ -212,9 +216,7 @@ function generatePresence(userID) {
           tw: Math.floor(Math.random() * 4294967295) + 1,
           at: time
         },
-        ch: {
-          ["p_" + userID]: 0
-        }
+        ch: { ["p_" + userID]: 0 }
       })
     )
   );
@@ -269,12 +271,7 @@ function _formatAttachment(attachment1, attachment2) {
     blob = attachment1.sticker_attachment;
   }
   else if (!type && attachment1.extensible_attachment) {
-    if (
-      attachment1.extensible_attachment.story_attachment &&
-      attachment1.extensible_attachment.story_attachment.target &&
-      attachment1.extensible_attachment.story_attachment.target.__typename &&
-      attachment1.extensible_attachment.story_attachment.target.__typename === "MessageLocation"
-    ) type = "MessageLocation";
+    if (attachment1.extensible_attachment.story_attachment && attachment1.extensible_attachment.story_attachment.target && attachment1.extensible_attachment.story_attachment.target.__typename && attachment1.extensible_attachment.story_attachment.target.__typename === "MessageLocation") type = "MessageLocation";
     else type = "ExtensibleAttachment";
 
     blob = attachment1.extensible_attachment;
@@ -286,127 +283,38 @@ function _formatAttachment(attachment1, attachment2) {
       return {
         type: "sticker",
         ID: attachment1.metadata.stickerID.toString(),
-        url: attachment1.url,
-
-        packID: attachment1.metadata.packID.toString(),
-        spriteUrl: attachment1.metadata.spriteURI,
-        spriteUrl2x: attachment1.metadata.spriteURI2x,
-        width: attachment1.metadata.width,
-        height: attachment1.metadata.height,
-
-        caption: attachment2.caption,
-        description: attachment2.description,
-
-        frameCount: attachment1.metadata.frameCount,
-        frameRate: attachment1.metadata.frameRate,
-        framesPerRow: attachment1.metadata.framesPerRow,
-        framesPerCol: attachment1.metadata.framesPerCol,
-
-        stickerID: attachment1.metadata.stickerID.toString(), // @Legacy
-        spriteURI: attachment1.metadata.spriteURI, // @Legacy
-        spriteURI2x: attachment1.metadata.spriteURI2x // @Legacy
+        url: attachment1.url
       };
     case "file":
       return {
         type: "file",
         filename: attachment1.name,
         ID: attachment2.id.toString(),
-        url: attachment1.url,
-
-        isMalicious: attachment2.is_malicious,
-        contentType: attachment2.mime_type,
-
-        name: attachment1.name, // @Legacy
-        mimeType: attachment2.mime_type, // @Legacy
-        fileSize: attachment2.file_size // @Legacy
+        url: attachment1.url
       };
     case "photo":
       return {
         type: "photo",
         ID: attachment1.metadata.fbid.toString(),
-        filename: attachment1.fileName,
-        thumbnailUrl: attachment1.thumbnail_url,
-
-        previewUrl: attachment1.preview_url,
-        previewWidth: attachment1.preview_width,
-        previewHeight: attachment1.preview_height,
-
-        largePreviewUrl: attachment1.large_preview_url,
-        largePreviewWidth: attachment1.large_preview_width,
-        largePreviewHeight: attachment1.large_preview_height,
-
-        url: attachment1.metadata.url, // @Legacy
-        width: attachment1.metadata.dimensions.split(",")[0], // @Legacy
-        height: attachment1.metadata.dimensions.split(",")[1], // @Legacy
-        name: attachment1.fileName // @Legacy
+        url: attachment1.metadata.url
       };
     case "animated_image":
       return {
         type: "animated_image",
         ID: attachment2.id.toString(),
-        filename: attachment2.filename,
-
-        previewUrl: attachment1.preview_url,
-        previewWidth: attachment1.preview_width,
-        previewHeight: attachment1.preview_height,
-
-        url: attachment2.image_data.url,
-        width: attachment2.image_data.width,
-        height: attachment2.image_data.height,
-
-        name: attachment1.name, // @Legacy
-        facebookUrl: attachment1.url, // @Legacy
-        thumbnailUrl: attachment1.thumbnail_url, // @Legacy
-        mimeType: attachment2.mime_type, // @Legacy
-        rawGifImage: attachment2.image_data.raw_gif_image, // @Legacy
-        rawWebpImage: attachment2.image_data.raw_webp_image, // @Legacy
-        animatedGifUrl: attachment2.image_data.animated_gif_url, // @Legacy
-        animatedGifPreviewUrl: attachment2.image_data.animated_gif_preview_url, // @Legacy
-        animatedWebpUrl: attachment2.image_data.animated_webp_url, // @Legacy
-        animatedWebpPreviewUrl: attachment2.image_data.animated_webp_preview_url // @Legacy
+        url: attachment2.image_data.url
       };
     case "share":
       return {
         type: "share",
         ID: attachment1.share.share_id.toString(),
-        url: attachment2.href,
-
-        title: attachment1.share.title,
-        description: attachment1.share.description,
-        source: attachment1.share.source,
-
-        image: attachment1.share.media.image,
-        width: attachment1.share.media.image_size.width,
-        height: attachment1.share.media.image_size.height,
-        playable: attachment1.share.media.playable,
-        duration: attachment1.share.media.duration,
-
-        subattachments: attachment1.share.subattachments,
-        properties: {},
-
-        animatedImageSize: attachment1.share.media.animated_image_size, // @Legacy
-        facebookUrl: attachment1.share.uri, // @Legacy
-        target: attachment1.share.target, // @Legacy
-        styleList: attachment1.share.style_list // @Legacy
+        url: attachment2.href
       };
     case "video":
       return {
         type: "video",
         ID: attachment1.metadata.fbid.toString(),
-        filename: attachment1.name,
-
-        previewUrl: attachment1.preview_url,
-        previewWidth: attachment1.preview_width,
-        previewHeight: attachment1.preview_height,
-
-        url: attachment1.url,
-        width: attachment1.metadata.dimensions.width,
-        height: attachment1.metadata.dimensions.height,
-
-        duration: attachment1.metadata.duration,
-        videoType: "unknown",
-
-        thumbnailUrl: attachment1.thumbnail_url // @Legacy
+        url: attachment1.url
       };
     case "error":
       return {
@@ -421,99 +329,31 @@ function _formatAttachment(attachment1, attachment2) {
       return {
         type: "photo",
         ID: blob.legacy_attachment_id,
-        filename: blob.filename,
-        thumbnailUrl: blob.thumbnail.uri,
-
-        previewUrl: blob.preview.uri,
-        previewWidth: blob.preview.width,
-        previewHeight: blob.preview.height,
-
-        largePreviewUrl: blob.large_preview.uri,
-        largePreviewWidth: blob.large_preview.width,
-        largePreviewHeight: blob.large_preview.height,
-
-        url: blob.large_preview.uri, // @Legacy
-        width: blob.original_dimensions.x, // @Legacy
-        height: blob.original_dimensions.y, // @Legacy
-        name: blob.filename // @Legacy
+        url: blob.large_preview.uri
       };
     case "MessageAnimatedImage":
       return {
         type: "animated_image",
         ID: blob.legacy_attachment_id,
-        filename: blob.filename,
-
-        previewUrl: blob.preview_image.uri,
-        previewWidth: blob.preview_image.width,
-        previewHeight: blob.preview_image.height,
-
-        url: blob.animated_image.uri,
-        width: blob.animated_image.width,
-        height: blob.animated_image.height,
-
-        thumbnailUrl: blob.preview_image.uri, // @Legacy
-        name: blob.filename, // @Legacy
-        facebookUrl: blob.animated_image.uri, // @Legacy
-        rawGifImage: blob.animated_image.uri, // @Legacy
-        animatedGifUrl: blob.animated_image.uri, // @Legacy
-        animatedGifPreviewUrl: blob.preview_image.uri, // @Legacy
-        animatedWebpUrl: blob.animated_image.uri, // @Legacy
-        animatedWebpPreviewUrl: blob.preview_image.uri // @Legacy
+        url: blob.animated_image.uri
       };
     case "MessageVideo":
       return {
         type: "video",
-        filename: blob.filename,
         ID: blob.legacy_attachment_id,
-
-        previewUrl: blob.large_image.uri,
-        previewWidth: blob.large_image.width,
-        previewHeight: blob.large_image.height,
-
-        url: blob.playable_url,
-        width: blob.original_dimensions.x,
-        height: blob.original_dimensions.y,
-
-        duration: blob.playable_duration_in_ms,
-        videoType: blob.video_type.toLowerCase(),
-
-        thumbnailUrl: blob.large_image.uri // @Legacy
+        url: blob.playable_url
       };
     case "MessageAudio":
       return {
         type: "audio",
-        filename: blob.filename,
         ID: blob.url_shimhash,
-
-        audioType: blob.audio_type,
-        duration: blob.playable_duration_in_ms,
-        url: blob.playable_url,
-
-        isVoiceMail: blob.is_voicemail
+        url: blob.playable_url
       };
     case "StickerAttachment":
       return {
         type: "sticker",
         ID: blob.id,
         url: blob.url,
-
-        packID: blob.pack ? blob.pack.id : null,
-        spriteUrl: blob.sprite_image,
-        spriteUrl2x: blob.sprite_image_2x,
-        width: blob.width,
-        height: blob.height,
-
-        caption: blob.label,
-        description: blob.label,
-
-        frameCount: blob.frame_count,
-        frameRate: blob.frame_rate,
-        framesPerRow: blob.frames_per_row,
-        framesPerCol: blob.frames_per_column,
-
-        stickerID: blob.id, // @Legacy
-        spriteURI: blob.sprite_image, // @Legacy
-        spriteURI2x: blob.sprite_image_2x // @Legacy
       };
     case "MessageLocation":
       var urlAttach = blob.story_attachment.url;
@@ -529,7 +369,8 @@ function _formatAttachment(attachment1, attachment2) {
       try {
         latitude = Number.parseFloat(address[0]);
         longitude = Number.parseFloat(address[1]);
-      } catch (err) {
+      }
+      catch (err) {
         /* empty */
       }
 
@@ -562,115 +403,66 @@ function _formatAttachment(attachment1, attachment2) {
       return {
         type: "share",
         ID: blob.legacy_attachment_id,
-        url: blob.story_attachment.url,
-
-        title: blob.story_attachment.title_with_entities.text,
-        description:
-          blob.story_attachment.description &&
-          blob.story_attachment.description.text,
-        source: blob.story_attachment.source ? blob.story_attachment.source.text : null,
-
-        image:
-          blob.story_attachment.media &&
-          blob.story_attachment.media.image &&
-          blob.story_attachment.media.image.uri,
-        width:
-          blob.story_attachment.media &&
-          blob.story_attachment.media.image &&
-          blob.story_attachment.media.image.width,
-        height:
-          blob.story_attachment.media &&
-          blob.story_attachment.media.image &&
-          blob.story_attachment.media.image.height,
-        playable:
-          blob.story_attachment.media &&
-          blob.story_attachment.media.is_playable,
-        duration:
-          blob.story_attachment.media &&
-          blob.story_attachment.media.playable_duration_in_ms,
-        playableUrl:
-          blob.story_attachment.media == null ? null : blob.story_attachment.media.playable_url,
-
-        subattachments: blob.story_attachment.subattachments,
-        properties: blob.story_attachment.properties.reduce(function (obj, cur) {
-          obj[cur.key] = cur.value.text;
-          return obj;
-        }, {}),
-
-        facebookUrl: blob.story_attachment.url, // @Legacy
-        target: blob.story_attachment.target, // @Legacy
-        styleList: blob.story_attachment.style_list // @Legacy
+        url: blob.story_attachment.url
       };
     case "MessageFile":
       return {
         type: "file",
-        filename: blob.filename,
         ID: blob.message_file_fbid,
-
-        url: blob.url,
-        isMalicious: blob.is_malicious,
-        contentType: blob.content_type,
-
-        name: blob.filename,
-        mimeType: "",
-        fileSize: -1
+        url: blob.url
       };
     default:
-      throw new Error(
-        "unrecognized attach_file of type " +
-        type +
-        "`" +
-        JSON.stringify(attachment1, null, 4) +
-        " attachment2: " +
-        JSON.stringify(attachment2, null, 4) +
-        "`"
-      );
+      throw new Error(`Unrecognized attach_file of type type\`JSON.stringify(attachment1, null, 4) attachment2: JSON.stringify(attachment2, null, 4)\``);
   }
 }
 
 function formatAttachment(attachments, attachmentIds, attachmentMap, shareMap) {
   attachmentMap = shareMap || attachmentMap;
-  return attachments
-    ? attachments.map(function (val, i) {
-      if (
-        !attachmentMap ||
-        !attachmentIds ||
-        !attachmentMap[attachmentIds[i]]
-      ) {
-        return _formatAttachment(val);
-      }
+  return attachments ?
+    attachments.map(function (val, i) {
+      if (!attachmentMap || !attachmentIds || !attachmentMap[attachmentIds[i]]) return _formatAttachment(val);
       return _formatAttachment(val, attachmentMap[attachmentIds[i]]);
-    })
-    : [];
+    }) : [];
 }
 
 function formatDeltaMessage(m) {
   var md = m.delta.messageMetadata;
-
-  var mdata =
-    m.delta.data === undefined
-      ? []
-      : m.delta.data.prng === undefined
-        ? []
-        : JSON.parse(m.delta.data.prng);
+  var mdata = m.delta.data === undefined ? [] : m.delta.data.prng === undefined ? [] : JSON.parse(m.delta.data.prng);
   var m_id = mdata.map(u => u.i);
   var m_offset = mdata.map(u => u.o);
   var m_length = mdata.map(u => u.l);
+  var threadID = formatID((md.threadKey.threadFbId || md.threadKey.otherUserFbId).toString());
+  var body = m.delta.body || "";
+  var prefix, args, command;;
   var mentions = {};
   for (var i = 0; i < m_id.length; i++) mentions[m_id[i]] = m.delta.body.substring(m_offset[i], m_offset[i] + m_length[i]);
-
+  
+  if (botData.threads.some(e => e.id == threadID)) {
+    prefix = botData.threads.find(e => e.id == threadID).prefix;
+  } else {
+    prefix = botData.default.prefix;
+  }  
+  if (body.startsWith(prefix)) {
+    args = body.slice(prefix.length).trim().split(/ +/g);
+    command = args.shift().toLowerCase();
+  }
+  else {
+    args = body.trim().split(/ +/g);
+    command = '';
+  }
   return {
     type: "message",
     senderID: formatID(md.actorFbId.toString()),
-    body: m.delta.body || "",
-    threadID: formatID(
-      (md.threadKey.threadFbId || md.threadKey.otherUserFbId).toString()
-    ),
+    threadID: threadID,
     messageID: md.messageId,
-    attachments: (m.delta.attachments || []).map(v => _formatAttachment(v)),
+    body: body,
+    args: args,
+    command: command,
     mentions: mentions,
     timestamp: md.timestamp,
-    isGroup: !!md.threadKey.threadFbId
+    attachments: (m.delta.attachments || []).map(v => _formatAttachment(v)),
+    isGroup: !!md.threadKey.threadFbId,
+    participantIDs: m.delta.participants || []
   };
 }
 
@@ -686,22 +478,16 @@ function formatMessage(m) {
     senderName: originalMessage.sender_name,
     senderID: formatID(originalMessage.sender_fbid.toString()),
     participantNames: originalMessage.group_thread_info ? originalMessage.group_thread_info.participant_names : [originalMessage.sender_name.split(" ")[0]],
-    participantIDs: originalMessage.group_thread_info
-      ? originalMessage.group_thread_info.participant_ids.map(function (v) {
+    participantIDs: originalMessage.group_thread_info ?
+      originalMessage.group_thread_info.participant_ids.map(function (v) {
         return formatID(v.toString());
-      })
-      : [formatID(originalMessage.sender_fbid)],
+      }) : [formatID(originalMessage.sender_fbid)],
     body: originalMessage.body || "",
     threadID: formatID((originalMessage.thread_fbid || originalMessage.other_user_fbid).toString()),
     threadName: originalMessage.group_thread_info ? originalMessage.group_thread_info.name : originalMessage.sender_name,
     location: originalMessage.coordinates ? originalMessage.coordinates : null,
     messageID: originalMessage.mid ? originalMessage.mid.toString() : originalMessage.message_id,
-    attachments: formatAttachment(
-      originalMessage.attachments,
-      originalMessage.attachmentIds,
-      originalMessage.attachment_map,
-      originalMessage.share_map
-    ),
+    attachments: formatAttachment(originalMessage.attachments, originalMessage.attachmentIds, originalMessage.attachment_map, originalMessage.share_map),
     timestamp: originalMessage.timestamp,
     timestampAbsolute: originalMessage.timestamp_absolute,
     timestampRelative: originalMessage.timestamp_relative,
@@ -745,16 +531,23 @@ function formatHistoryMessage(m) {
 }
 
 // Get a more readable message type for AdminTextMessages
-function getAdminTextMessageType(type) {
-  switch (type) {
+function getAdminTextMessageType(m) {
+  switch (m.type) {
     case "change_thread_theme":
       return "log:thread-color";
-    case "change_thread_nickname":
-      return "log:user-nickname";
     case "change_thread_icon":
       return "log:thread-icon";
-    default:
-      return type;
+    case "change_thread_nickname":
+      return "log:user-nickname";
+    case "change_thread_admins":
+      return "log:thread-admins";
+    case "group_poll":
+      return "log:thread-poll";
+    case "change_thread_approval_mode":
+      return "log:thread-approval-mode";
+    case "messenger_call_log":
+    case "participant_joined_group_call":
+      return "log:thread-call";
   }
 }
 
@@ -771,8 +564,8 @@ function formatDeltaEvent(m) {
 
   switch (m.class) {
     case "AdminTextMessage":
+      logMessageType = getAdminTextMessageType(m);
       logMessageData = m.untypedData;
-      logMessageType = getAdminTextMessageType(m.type);
       break;
     case "ThreadName":
       logMessageType = "log:thread-name";
@@ -794,7 +587,8 @@ function formatDeltaEvent(m) {
     logMessageType: logMessageType,
     logMessageData: logMessageData,
     logMessageBody: m.messageMetadata.adminText,
-    author: m.messageMetadata.actorFbId
+    author: m.messageMetadata.actorFbId,
+    participantIDs: m.participants || []
   };
 }
 
@@ -868,8 +662,7 @@ function makeParsable(html) {
 }
 
 function arrToForm(form) {
-  return arrayToObject(
-    form,
+  return arrayToObject(form,
     function (v) {
       return v.name;
     },
@@ -952,7 +745,9 @@ function makeDefaults(html, userID, ctx) {
     // }
 
     if (!obj) return newObj;
-    for (var prop in obj) if (obj.hasOwnProperty(prop)) if (!newObj[prop]) newObj[prop] = obj[prop];
+    for (var prop in obj)
+      if (obj.hasOwnProperty(prop))
+        if (!newObj[prop]) newObj[prop] = obj[prop];
     return newObj;
   }
 
@@ -965,14 +760,7 @@ function makeDefaults(html, userID, ctx) {
   }
 
   function postFormDataWithDefault(url, jar, form, qs, ctxx) {
-    return postFormData(
-      url,
-      jar,
-      mergeWithDefaults(form),
-      mergeWithDefaults(qs),
-      ctx.globalOptions,
-      ctxx || ctx
-    );
+    return postFormData(url, jar, mergeWithDefaults(form), mergeWithDefaults(qs), ctx.globalOptions, ctxx || ctx);
   }
 
   return {
@@ -999,27 +787,8 @@ function parseAndCheckLogin(ctx, defaultFuncs, retryCount) {
         var retryTime = Math.floor(Math.random() * 5000);
         log.warn("parseAndCheckLogin", "Got status code " + data.statusCode + " - " + retryCount + ". attempt to retry in " + retryTime + " milliseconds...");
         var url = data.request.uri.protocol + "//" + data.request.uri.hostname + data.request.uri.pathname;
-        if (data.request.headers["Content-Type"].split(";")[0] === "multipart/form-data") {
-          return bluebird
-            .delay(retryTime)
-            .then(function () {
-              return defaultFuncs.postFormData(
-                url,
-                ctx.jar,
-                data.request.formData,
-                {}
-              );
-            })
-            .then(parseAndCheckLogin(ctx, defaultFuncs, retryCount));
-        }
-        else {
-          return bluebird
-            .delay(retryTime)
-            .then(function () {
-              return defaultFuncs.post(url, ctx.jar, data.request.formData);
-            })
-            .then(parseAndCheckLogin(ctx, defaultFuncs, retryCount));
-        }
+        if (data.request.headers["Content-Type"].split(";")[0] === "multipart/form-data") return bluebird.delay(retryTime).then(() => defaultFuncs.postFormData(url, ctx.jar, data.request.formData, {})).then(parseAndCheckLogin(ctx, defaultFuncs, retryCount));
+        else return bluebird.delay(retryTime).then(() => defaultFuncs.post(url, ctx.jar, data.request.formData)).then(parseAndCheckLogin(ctx, defaultFuncs, retryCount));
       }
       if (data.statusCode !== 200) throw new Error("parseAndCheckLogin got status code: " + data.statusCode + ". Bailing out of trying to parse response.");
 
@@ -1095,16 +864,17 @@ var NUM_TO_MONTH = [
   "Dec"
 ];
 var NUM_TO_DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function formatDate(date) {
   var d = date.getUTCDate();
-  d = d >= 10 ? d : "0" + d;
+  d = d >= 10 ? d : `0${d}`;
   var h = date.getUTCHours();
-  h = h >= 10 ? h : "0" + h;
+  h = h >= 10 ? h : `0${h}`;
   var m = date.getUTCMinutes();
-  m = m >= 10 ? m : "0" + m;
+  m = m >= 10 ? m : `0${m}`;
   var s = date.getUTCSeconds();
-  s = s >= 10 ? s : "0" + s;
-  return (NUM_TO_DAY[date.getUTCDay()] + ", " + d + " " + NUM_TO_MONTH[date.getUTCMonth()] + " " + date.getUTCFullYear() + " " + h + ":" + m + ":" + s + " GMT");
+  s = s >= 10 ? s : `0${s}`;
+  return `${NUM_TO_DAY[date.getUTCDay()]}, ${d} ${NUM_TO_MONTH[date.getUTCMonth()]} ${date.getUTCFullYear()} ${h}:${m}:${s} GMT`;
 }
 
 function formatCookie(arr, url) {
@@ -1156,7 +926,7 @@ function formatProxyPresence(presence, userID) {
   return {
     type: "presence",
     timestamp: presence.lat * 1000,
-    userID: userID,
+    userID: userID || '',
     statuses: presence.p
   };
 }
@@ -1165,7 +935,7 @@ function formatPresence(presence, userID) {
   return {
     type: "presence",
     timestamp: presence.la * 1000,
-    userID: userID,
+    userID: userID || '',
     statuses: presence.a
   };
 }
@@ -1183,10 +953,18 @@ function decodeClientPayload(payload) {
     while (i < len) {
       c = array[i++];
       switch (c >> 4) {
-        case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
+        case 0:
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+        case 5:
+        case 6:
+        case 7:
           out += String.fromCharCode(c);
           break;
-        case 12: case 13:
+        case 12:
+        case 13:
           char2 = array[i++];
           out += String.fromCharCode(((c & 0x1F) << 6) | (char2 & 0x3F));
           break;
@@ -1203,10 +981,7 @@ function decodeClientPayload(payload) {
 }
 
 function getAppState(jar) {
-  return jar
-    .getCookies("https://www.facebook.com")
-    .concat(jar.getCookies("https://facebook.com"))
-    .concat(jar.getCookies("https://www.messenger.com"));
+  return jar.getCookies("https://www.facebook.com").concat(jar.getCookies("https://facebook.com")).concat(jar.getCookies("https://www.messenger.com"));
 }
 module.exports = {
   isReadableStream,
@@ -1248,4 +1023,3 @@ module.exports = {
   getAdminTextMessageType,
   setProxy
 };
-

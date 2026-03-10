@@ -6,9 +6,12 @@ var mqtt = require('mqtt');
 var websocket = require('websocket-stream');
 var HttpsProxyAgent = require('https-proxy-agent');
 const EventEmitter = require('events');
+const fs = require("fs");
+const logger = require(process.cwd() + "/declare/logger");
+const botData = JSON.parse(fs.readFileSync("./data.json"));
 
-var identity = function () { };
 var form = {};
+var identity = function () { };
 var getSeqID = function () { };
 
 var topics = [
@@ -99,7 +102,8 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
   var mqttClient = ctx.mqttClient;
 
   mqttClient.on('error', function (err) {
-    log.error("listenMqtt", err);
+    // log.error("listenMqtt", err);
+    logger.logError(`${err.name}: ${err.message}`, "listenmqtt");
     mqttClient.end();
     if (ctx.globalOptions.autoReconnect) getSeqID();
     else globalCallback({ type: "stop_listen", error: "Connection refused: Server unavailable" }, null);
@@ -150,7 +154,7 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
       var jsonMessage = JSON.parse(message);
     }
     catch (ex) {
-      return log.error("listenMqtt", ex);
+      return logger.logError(`${err.name}: ${err.message}`, "listenmqtt");
     }
     if (topic === "/t_ms") {
       if (ctx.tmsWait && typeof ctx.tmsWait == "function") ctx.tmsWait();
@@ -185,7 +189,7 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
 
           var presence = {
             type: "presence",
-            userID: String(userID),
+            userID: userID.toString(),
             //Convert to ms
             timestamp: data["l"] * 1000,
             statuses: data["p"]
@@ -222,7 +226,8 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
             type: "parse_error"
           });
         }
-        if (fmtMsg) if (ctx.globalOptions.autoMarkDelivery) markDelivery(ctx, api, fmtMsg.threadID, fmtMsg.messageID);
+        if (fmtMsg)
+          if (ctx.globalOptions.autoMarkDelivery) markDelivery(ctx, api, fmtMsg.threadID, fmtMsg.messageID);
 
         return !ctx.globalOptions.selfListen && fmtMsg.senderID === ctx.userID ? undefined : (function () { globalCallback(null, fmtMsg); })();
       }
@@ -266,13 +271,13 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
               timestamp: delta.deltaRecallMessageData.timestamp
             });
           })();
-        } else if (delta.deltaMessageReply) {
+        }
+        else if (delta.deltaMessageReply) {
           //Mention block - #1
-          var mdata =
-            delta.deltaMessageReply.message === undefined ? [] :
-              delta.deltaMessageReply.message.data === undefined ? [] :
-                delta.deltaMessageReply.message.data.prng === undefined ? [] :
-                  JSON.parse(delta.deltaMessageReply.message.data.prng);
+          var mdata = delta.deltaMessageReply.message === undefined ? [] :
+            delta.deltaMessageReply.message.data === undefined ? [] :
+              delta.deltaMessageReply.message.data.prng === undefined ? [] :
+                JSON.parse(delta.deltaMessageReply.message.data.prng);
           var m_id = mdata.map(u => u.i);
           var m_offset = mdata.map(u => u.o);
           var m_length = mdata.map(u => u.l);
@@ -281,11 +286,34 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
 
           for (var i = 0; i < m_id.length; i++) mentions[m_id[i]] = (delta.deltaMessageReply.message.body || "").substring(m_offset[i], m_offset[i] + m_length[i]);
           //Mention block - 1#
+          var threadID = (delta.deltaMessageReply.message.messageMetadata.threadKey.threadFbId ? delta.deltaMessageReply.message.messageMetadata.threadKey.threadFbId : delta.deltaMessageReply.message.messageMetadata.threadKey.otherUserFbId).toString();
+          var body = delta.deltaMessageReply.message.body || "";
+          var _prefix;
+          if (botData.threads.some(e => e.id == threadID)) {
+            _prefix = botData.threads.find(e => e.id == threadID).prefix;
+          } else {
+            _prefix = botData.default.prefix;
+          }
+          var args, command;
+          if (body.startsWith(_prefix)) {
+            args = body.slice(_prefix.length).trim().split(/ +/g);
+            command = args.shift().toLowerCase();
+          }
+          else {
+            args = body.trim().split(/ +/g);
+            command = '';
+          };
           var callbackToReturn = {
             type: "message_reply",
-            threadID: (delta.deltaMessageReply.message.messageMetadata.threadKey.threadFbId ? delta.deltaMessageReply.message.messageMetadata.threadKey.threadFbId : delta.deltaMessageReply.message.messageMetadata.threadKey.otherUserFbId).toString(),
+            threadID: threadID,
             messageID: delta.deltaMessageReply.message.messageMetadata.messageId,
             senderID: delta.deltaMessageReply.message.messageMetadata.actorFbId.toString(),
+            body: body,
+            args: args,
+            command: command,
+            isGroup: !!delta.deltaMessageReply.message.messageMetadata.threadKey.threadFbId,
+            mentions: mentions,
+            timestamp: delta.deltaMessageReply.message.messageMetadata.timestamp,
             attachments: delta.deltaMessageReply.message.attachments.map(function (att) {
               var mercury = JSON.parse(att.mercuryJSON);
               Object.assign(att, mercury);
@@ -302,19 +330,15 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
               }
               return x;
             }),
-            body: delta.deltaMessageReply.message.body || "",
-            isGroup: !!delta.deltaMessageReply.message.messageMetadata.threadKey.threadFbId,
-            mentions: mentions,
-            timestamp: delta.deltaMessageReply.message.messageMetadata.timestamp,
+            participantIDs: (delta.deltaMessageReply.message.participants || []).map(e => e.toString())
           };
 
           if (delta.deltaMessageReply.repliedToMessage) {
             //Mention block - #2
-            mdata =
-              delta.deltaMessageReply.repliedToMessage === undefined ? [] :
-                delta.deltaMessageReply.repliedToMessage.data === undefined ? [] :
-                  delta.deltaMessageReply.repliedToMessage.data.prng === undefined ? [] :
-                    JSON.parse(delta.deltaMessageReply.repliedToMessage.data.prng);
+            mdata = delta.deltaMessageReply.repliedToMessage === undefined ? [] :
+              delta.deltaMessageReply.repliedToMessage.data === undefined ? [] :
+                delta.deltaMessageReply.repliedToMessage.data.prng === undefined ? [] :
+                  JSON.parse(delta.deltaMessageReply.repliedToMessage.data.prng);
             m_id = mdata.map(u => u.i);
             m_offset = mdata.map(u => u.o);
             m_length = mdata.map(u => u.l);
@@ -323,10 +347,32 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
 
             for (var i = 0; i < m_id.length; i++) rmentions[m_id[i]] = (delta.deltaMessageReply.repliedToMessage.body || "").substring(m_offset[i], m_offset[i] + m_length[i]);
             //Mention block - 2#
+            var _threadID = (delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId ? delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId : delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.otherUserFbId).toString();
+            var _body = delta.deltaMessageReply.repliedToMessage.body || "";
+            var _args, _command;
+            if (botData.threads.some(e => e.id == _threadID)) {
+              _prefix = botData.threads.find(e => e.id == _threadID).prefix;
+            } else {
+              _prefix = botData.default.prefix;
+            }            
+            if (_body.startsWith(_prefix)) {
+              _args = _body.slice(_prefix.length).trim().split(/ +/g);
+              _command = _args.shift().toLowerCase();
+            }
+            else {
+              _args = _body.trim().split(/ +/g);
+              _command = '';
+            };            
             callbackToReturn.messageReply = {
-              threadID: (delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId ? delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId : delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.otherUserFbId).toString(),
+              threadID: _threadID,
               messageID: delta.deltaMessageReply.repliedToMessage.messageMetadata.messageId,
               senderID: delta.deltaMessageReply.repliedToMessage.messageMetadata.actorFbId.toString(),
+              args: _args,
+              body: _body,
+              command: _command,
+              isGroup: !!delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId,
+              mentions: rmentions,
+              timestamp: delta.deltaMessageReply.repliedToMessage.messageMetadata.timestamp,
               attachments: delta.deltaMessageReply.repliedToMessage.attachments.map(function (att) {
                 var mercury = JSON.parse(att.mercuryJSON);
                 Object.assign(att, mercury);
@@ -343,10 +389,7 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                 }
                 return x;
               }),
-              body: delta.deltaMessageReply.repliedToMessage.body || "",
-              isGroup: !!delta.deltaMessageReply.repliedToMessage.messageMetadata.threadKey.threadFbId,
-              mentions: rmentions,
-              timestamp: delta.deltaMessageReply.repliedToMessage.messageMetadata.timestamp
+              participantIDs: (delta.deltaMessageReply.repliedToMessage.participants || []).map(e => e.toString())
             };
           }
           else if (delta.deltaMessageReply.replyToMessageId) {
@@ -371,7 +414,6 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                 if (resData[resData.length - 1].error_results > 0) throw resData[0].o0.errors;
                 if (resData[resData.length - 1].successful_results === 0) throw { error: "forcedFetch: there was no successful_results", res: resData };
                 var fetchData = resData[0].o0.data.message;
-
                 var mobj = {};
                 for (var n in fetchData.message.ranges) mobj[fetchData.message.ranges[n].entity.id] = (fetchData.message.text || "").substr(fetchData.message.ranges[n].offset, fetchData.message.ranges[n].length);
 
@@ -391,6 +433,7 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                     }
                     return x;
                   }),
+                  args: (fetchData.message.text || "").trim().split(/\s+/) || [],
                   body: fetchData.message.text || "",
                   isGroup: callbackToReturn.isGroup,
                   mentions: mobj,
@@ -403,7 +446,16 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                 !ctx.globalOptions.selfListen && callbackToReturn.senderID === ctx.userID ? undefined : (function () { globalCallback(null, callbackToReturn); })();
               });
           }
-          else callbackToReturn.delta = delta;
+          else callbackToReturn.messageReply = {
+            messageID: delta.deltaMessageReply.message.messageReply.replyToMessageId.id,
+            threadID: delta.deltaMessageReply.message.messageMetadata.threadKey.threadFbId.toString(),
+            body: "",
+            senderID: "",
+            attachments: [],
+            isGroup: undefined,
+            mentions: {},
+            timestamp: delta.deltaMessageReply.message.messageMetadata.timestamp
+          }
 
           if (ctx.globalOptions.autoMarkDelivery) markDelivery(ctx, api, callbackToReturn.threadID, callbackToReturn.messageID);
 
@@ -415,7 +467,6 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
   }
 
   if (v.delta.class !== "NewMessage" && !ctx.globalOptions.listenEvents) return;
-
   switch (v.delta.class) {
     case "ReadReceipt":
       var fmtMsg;
@@ -434,10 +485,13 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
     case "AdminTextMessage":
       switch (v.delta.type) {
         case "change_thread_theme":
-        case "change_thread_nickname":
         case "change_thread_icon":
-          break;
+        case "change_thread_nickname":
+        case "change_thread_admins":
+        case "change_thread_approval_mode":
         case "group_poll":
+        case "messenger_call_log":
+        case "participant_joined_group_call":
           var fmtMsg;
           try {
             fmtMsg = utils.formatDeltaEvent(v.delta);
@@ -482,20 +536,15 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
           .then(utils.parseAndCheckLogin(ctx, defaultFuncs))
           .then((resData) => {
             if (resData[resData.length - 1].error_results > 0) throw resData[0].o0.errors;
-
             if (resData[resData.length - 1].successful_results === 0) throw { error: "forcedFetch: there was no successful_results", res: resData };
-
             var fetchData = resData[0].o0.data.message;
 
             if (utils.getType(fetchData) == "Object") {
               log.info("forcedFetch", fetchData);
               switch (fetchData.__typename) {
                 case "ThreadImageMessage":
-                  (!ctx.globalOptions.selfListen &&
-                    fetchData.message_sender.id.toString() === ctx.userID) ||
-                    !ctx.loggedIn ?
-                    undefined :
-                    (function () {
+                  (!ctx.globalOptions.selfListen && fetchData.message_sender.id.toString() === ctx.userID) ||
+                    !ctx.loggedIn ? undefined : (function () {
                       globalCallback(null, {
                         type: "change_thread_image",
                         threadID: utils.formatID(tid.toString()),
@@ -504,8 +553,6 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                         author: fetchData.message_sender.id,
                         image: {
                           attachmentID: fetchData.image_with_metadata && fetchData.image_with_metadata.legacy_attachment_id,
-                          width: fetchData.image_with_metadata && fetchData.image_with_metadata.original_dimensions.x,
-                          height: fetchData.image_with_metadata && fetchData.image_with_metadata.original_dimensions.y,
                           url: fetchData.image_with_metadata && fetchData.image_with_metadata.preview.uri
                         }
                       });
@@ -521,20 +568,7 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                     attachments: [{
                       type: "share",
                       ID: fetchData.extensible_attachment.legacy_attachment_id,
-                      url: fetchData.extensible_attachment.story_attachment.url,
-
-                      title: fetchData.extensible_attachment.story_attachment.title_with_entities.text,
-                      description: fetchData.extensible_attachment.story_attachment.description.text,
-                      source: fetchData.extensible_attachment.story_attachment.source,
-
-                      image: ((fetchData.extensible_attachment.story_attachment.media || {}).image || {}).uri,
-                      width: ((fetchData.extensible_attachment.story_attachment.media || {}).image || {}).width,
-                      height: ((fetchData.extensible_attachment.story_attachment.media || {}).image || {}).height,
-                      playable: (fetchData.extensible_attachment.story_attachment.media || {}).is_playable || false,
-                      duration: (fetchData.extensible_attachment.story_attachment.media || {}).playable_duration_in_ms || 0,
-
-                      subattachments: fetchData.extensible_attachment.subattachments,
-                      properties: fetchData.extensible_attachment.story_attachment.properties,
+                      url: fetchData.extensible_attachment.story_attachment.url
                     }],
                     mentions: {},
                     timestamp: parseInt(fetchData.timestamp_precise),
@@ -549,20 +583,7 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                     attachments: [{
                       type: "share",
                       ID: fetchData.extensible_attachment.legacy_attachment_id,
-                      url: fetchData.extensible_attachment.story_attachment.url,
-
-                      title: fetchData.extensible_attachment.story_attachment.title_with_entities.text,
-                      description: fetchData.extensible_attachment.story_attachment.description.text,
-                      source: fetchData.extensible_attachment.story_attachment.source,
-
-                      image: ((fetchData.extensible_attachment.story_attachment.media || {}).image || {}).uri,
-                      width: ((fetchData.extensible_attachment.story_attachment.media || {}).image || {}).width,
-                      height: ((fetchData.extensible_attachment.story_attachment.media || {}).image || {}).height,
-                      playable: (fetchData.extensible_attachment.story_attachment.media || {}).is_playable || false,
-                      duration: (fetchData.extensible_attachment.story_attachment.media || {}).playable_duration_in_ms || 0,
-
-                      subattachments: fetchData.extensible_attachment.subattachments,
-                      properties: fetchData.extensible_attachment.story_attachment.properties,
+                      url: fetchData.extensible_attachment.story_attachment.url
                     }],
                     mentions: {},
                     timestamp: parseInt(fetchData.timestamp_precise),
@@ -571,8 +592,7 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
               }
             }
             else log.error("forcedFetch", fetchData);
-          })
-          .catch((err) => log.error("forcedFetch", err));
+          }).catch((err) => log.error("forcedFetch", err));
       }
       break;
     case "ThreadName":
