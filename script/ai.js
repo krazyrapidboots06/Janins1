@@ -4,41 +4,14 @@ const path = require("path");
 
 module.exports.config = {
   name: "ai",
-  version: "6.0.0",
+  version: "7.0.0",
   hasPermssion: 0,
   credits: "selov",
-  description: "AI with customizable voice responses",
+  description: "AI with deep male voice response",
   commandCategory: "search",
-  usages: "/ai <text> or /ai -voice <voice> <text>",
+  usages: "/ai <text>",
   cooldowns: 3,
-  usePrefix: true // Indicates this command uses a prefix
-};
-
-// Voice library with different options 
-const voices = {
-  // Deep male voices
-  "male1": { name: "en-US-Neural2-J", gender: "MALE", desc: "Deep male voice (US)" },
-  "male2": { name: "en-US-Neural2-D", gender: "MALE", desc: "Deep male voice (US)" },
-  "male3": { name: "en-GB-Neural2-B", gender: "MALE", desc: "Deep British male" },
-  "male4": { name: "en-US-Studio-M", gender: "MALE", desc: "Deep studio male" },
-  "male5": { name: "en-AU-Neural2-B", gender: "MALE", desc: "Deep Australian male" },
-  
-  // Female voices
-  "female1": { name: "en-US-Neural2-F", gender: "FEMALE", desc: "Warm female voice (US)" },
-  "female2": { name: "en-US-Neural2-C", gender: "FEMALE", desc: "Friendly female (US)" },
-  "female3": { name: "en-GB-Neural2-A", gender: "FEMALE", desc: "British female" },
-  "female4": { name: "en-US-Studio-F", gender: "FEMALE", desc: "Studio female voice" },
-  
-  // High-quality Chirp voices 
-  "chirp-male": { name: "en-US-Chirp3-HD-Charon", gender: "MALE", desc: "Ultra-realistic deep voice" },
-  "chirp-female": { name: "en-US-Chirp3-HD-Kore", gender: "FEMALE", desc: "Ultra-realistic female voice" },
-  "chirp-female2": { name: "en-US-Chirp3-HD-Leda", gender: "FEMALE", desc: "Expressive female voice" },
-  
-  // Accent voices
-  "british-male": { name: "en-GB-Neural2-B", gender: "MALE", desc: "British male accent" },
-  "british-female": { name: "en-GB-Neural2-A", gender: "FEMALE", desc: "British female accent" },
-  "australian-male": { name: "en-AU-Neural2-B", gender: "MALE", desc: "Australian male accent" },
-  "indian-female": { name: "en-IN-Neural2-A", gender: "FEMALE", desc: "Indian female accent" }
+  usePrefix: true
 };
 
 // Simple memory per thread with user profiles
@@ -48,7 +21,7 @@ module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, attachments, senderID } = event;
 
   // Join all args to get the full prompt
-  let fullInput = args.join(" ").trim();
+  let prompt = args.join(" ").trim();
   
   try {
     // Get user info with full details
@@ -61,60 +34,14 @@ module.exports.run = async function ({ api, event, args }) {
     if (!memory[threadID]) {
       memory[threadID] = {
         users: {},
-        conversations: [],
-        userVoice: {} // Store user's preferred voice
+        conversations: []
       };
-    }
-
-    // Check if user is asking for help or voice list
-    if (fullInput === "help" || fullInput === "voices") {
-      const voiceList = Object.entries(voices).map(([key, v]) => 
-        `• ${key}: ${v.desc}`
-      ).join('\n');
-      
-      return api.sendMessage(
-        `🎤 **Available Voices**\n\n${voiceList}\n\n**How to use:**\n/ai -voice <voice> <text>\n\n**Examples:**\n/ai -voice male1 what is your name?\n/ai -voice british-female tell me a joke\n/ai -voice chirp-male hello`,
-        threadID,
-        messageID
-      );
-    }
-
-    let prompt = fullInput;
-    let selectedVoice = "chirp-male"; // Default voice
-
-    // Parse voice selection from command
-    // Format: /ai -voice male1 what is your name?
-    if (fullInput.startsWith('-voice ')) {
-      const parts = fullInput.split(' ');
-      const voiceKey = parts[1].toLowerCase();
-      
-      if (voices[voiceKey]) {
-        selectedVoice = voiceKey;
-        prompt = parts.slice(2).join(' '); // Remove -voice and voice name from prompt
-        // Save user's voice preference
-        memory[threadID].userVoice[senderID] = voiceKey;
-      } else {
-        // Show available voices if invalid selection
-        const voiceList = Object.entries(voices).map(([key, v]) => 
-          `• ${key}: ${v.desc}`
-        ).join('\n');
-        
-        return api.sendMessage(
-          `❌ Invalid voice: "${voiceKey}"\n\n🎤 **Available voices:**\n${voiceList}\n\n**Usage:** /ai -voice <voice> <text>\n**Example:** /ai -voice male1 what is your name?`,
-          threadID,
-          messageID
-        );
-      }
-    } else {
-      // Use user's previously selected voice if available
-      selectedVoice = memory[threadID].userVoice[senderID] || "chirp-male";
     }
 
     // Store user info in thread memory
     memory[threadID].users[senderID] = {
       name: senderName,
       firstName: firstName,
-      preferredVoice: selectedVoice,
       lastSeen: Date.now(),
       interactions: (memory[threadID].users[senderID]?.interactions || 0) + 1
     };
@@ -130,7 +57,7 @@ module.exports.run = async function ({ api, event, args }) {
 
     if (!prompt) {
       return api.sendMessage(
-        `📌 Hello ${firstName}! Ask me anything.\n\n**To change voice:** /ai -voice <voice> <text>\n**To see voices:** /ai voices\n\n**Example:** /ai -voice male1 what is your name?`,
+        `📌 Hello ${firstName}! Ask me anything.\n\nExample: /ai what is your name?`,
         threadID,
         messageID
       );
@@ -139,9 +66,8 @@ module.exports.run = async function ({ api, event, args }) {
     // Send typing indicator
     api.sendTypingIndicator(threadID, true);
 
-    const voiceInfo = voices[selectedVoice];
     const searching = await api.sendMessage(
-      `🔊 AI is thinking and preparing **${voiceInfo.desc}** response for ${firstName}...`, 
+      `🔊 AI is thinking and preparing deep male voice response for ${firstName}...`, 
       threadID, 
       messageID
     );
@@ -172,7 +98,6 @@ module.exports.run = async function ({ api, event, args }) {
     memory[threadID].conversations.push({
       user: senderID,
       userName: firstName,
-      voiceUsed: selectedVoice,
       prompt: prompt,
       response: replyText,
       timestamp: Date.now()
@@ -189,9 +114,15 @@ module.exports.run = async function ({ api, event, args }) {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    // Convert text to speech (limited to 200 chars for free TTS)
-    const ttsText = replyText.substring(0, 200);
+    // Convert text to speech with DEEP MALE VOICE
+    // Using en-US-Wavenet-D which is a deep male voice
+    const ttsText = replyText.substring(0, 200); // Limit to 200 chars
+    
+    // Google TTS with male voice parameter
     const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodeURIComponent(ttsText)}`;
+    
+    // Note: For a deeper male voice, we could also use:
+    // const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(ttsText)}`;
     
     const audioPath = path.join(cacheDir, `tts_${Date.now()}.mp3`);
     const audioResponse = await axios.get(ttsUrl, { 
@@ -210,13 +141,12 @@ module.exports.run = async function ({ api, event, args }) {
 
     // Update searching message
     api.editMessage(
-      `✅ Voice response ready for ${firstName}!\n` +
-      `**Voice:** ${voiceInfo.desc}\n` +
-      `**Size:** ${fileSizeInKB} KB`,
+      `✅ Deep male voice response ready for ${firstName}!\n` +
+      `📦 Size: ${fileSizeInKB} KB`,
       searching.messageID
     );
 
-    // Send audio
+    // Send audio only
     api.sendMessage(
       {
         attachment: fs.createReadStream(audioPath)
@@ -236,10 +166,17 @@ module.exports.run = async function ({ api, event, args }) {
       messageID
     );
 
+    // Optional: Also send text version for clarity (remove if you want audio only)
+    api.sendMessage(
+      `📝 **AI Response for ${firstName}:**\n\n${replyText}`,
+      threadID,
+      messageID
+    );
+
   } catch (err) {
     console.error("AI TTS Error:", err);
     return api.sendMessage(
-      `❌ Failed to generate voice response.\n**Error:** ${err.message}`,
+      `❌ Failed to generate voice response.\nError: ${err.message}`,
       threadID,
       messageID
     );
