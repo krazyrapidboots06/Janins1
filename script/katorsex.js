@@ -4,52 +4,21 @@ const path = require("path");
 
 module.exports.config = {
   name: "katorsex",
-  version: "5.0.0",
-  hasPermssion: 0,
+  version: "4.0.0",
+  hasPermssion: 2,
   credits: "Yasis",
-  description: "Get random video (Restricted Access)",
+  description: "Get random video",
   commandCategory: "video",
   usages: "/katorsex",
   cooldowns: 5
 };
 
-// Authorized Facebook UIDs - Only these users can use this command
-const AUTHORIZED_UIDS = [
-  "61556388598622",
-  "61552057602849"
-];
-
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
 
   try {
-    // Check if user is authorized
-    if (!AUTHORIZED_UIDS.includes(senderID.toString())) {
-      // Get unauthorized user's info for logging
-      const user = await api.getUserInfo(senderID);
-      const userName = user[senderID]?.name || "Unknown";
-      
-      // Log unauthorized attempt
-      console.log(`❌ UNAUTHORIZED ACCESS ATTEMPT:
-User: ${userName}
-UID: ${senderID}
-Time: ${new Date().toLocaleString()}
-Command: katorsex`);
-      
-      // Send fake error message to unauthorized users
-      return api.sendMessage(
-        "❌ This command is currently under maintenance. Please try again later.",
-        threadID,
-        messageID
-      );
-    }
-
-    // Get authorized user's name
     const user = await api.getUserInfo(senderID);
     const senderName = user[senderID]?.name || "User";
-
-    // Log authorized access
-    console.log(`✅ Authorized access: ${senderName} (${senderID})`);
 
     const waiting = await api.sendMessage("🔍 Accessing video source...", threadID, messageID);
 
@@ -77,6 +46,7 @@ Command: katorsex`);
     });
 
     console.log("API Response Status:", response.status);
+    console.log("API Response Data:", JSON.stringify(response.data, null, 2).substring(0, 500));
 
     // Check different response structures
     let videos = [];
@@ -102,6 +72,8 @@ Command: katorsex`);
     // Get random video
     const randomIndex = Math.floor(Math.random() * videos.length);
     const selectedVideo = videos[randomIndex];
+    
+    console.log("Selected video:", JSON.stringify(selectedVideo, null, 2));
 
     // Find video URL in different possible fields
     let videoUrl = null;
@@ -193,14 +165,11 @@ Command: katorsex`);
   } catch (err) {
     console.error("Command Error:", err);
     
-    // Only show detailed error to authorized users
-    if (AUTHORIZED_UIDS.includes(senderID.toString())) {
-      let errorMessage = err.message;
-      if (err.response) {
-        errorMessage = `API returned status ${err.response.status}`;
-      }
-      api.sendMessage(`❌ Error: ${errorMessage}`, threadID, messageID);
+    let errorMessage = err.message;
+    if (err.response) {
+      errorMessage = `API returned status ${err.response.status}`;
     }
-    // Unauthorized users don't get error details
+    
+    api.sendMessage(`❌ Error: ${errorMessage}`, threadID, messageID);
   }
 };
