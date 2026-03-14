@@ -13,7 +13,7 @@ module.exports.config = {
   hasPrefix: true,
 };
 
-// Available categories
+// Available categories for waifu.pics API (SFW only)
 const categories = {
   'waifu': 'waifu',
   'neko': 'neko',
@@ -55,7 +55,7 @@ module.exports.run = async ({ api, event, args }) => {
   api.setMessageReaction("⏳", messageID, (err) => {}, true);
   
   try {
-    // Get category from args
+    // Get category from args (default to waifu)
     let category = args[0] ? args[0].toLowerCase() : 'waifu';
     
     // Check if category exists
@@ -71,16 +71,21 @@ module.exports.run = async ({ api, event, args }) => {
     // Send typing indicator
     api.sendTypingIndicator(threadID, true);
 
-    // Fetch from Waifu.im API
-    const apiUrl = `https://api.waifu.im/search?included_tags=${categories[category]}`;
+    // CORRECTED API URL - using waifu.pics SFW endpoint
+    const apiUrl = `https://api.waifu.pics/sfw/${categories[category]}`;
+    
+    console.log("Fetching from:", apiUrl); // Debug log
+    
     const response = await axios.get(apiUrl);
     
-    if (!response.data || !response.data.images || response.data.images.length === 0) {
-      return api.sendMessage("❌ No image found.", threadID, messageID);
+    console.log("API Response:", response.data); // Debug log
+    
+    // Check if response contains URL
+    if (!response.data || !response.data.url) {
+      return api.sendMessage("❌ No image found from API.", threadID, messageID);
     }
 
-    const imageData = response.data.images[0];
-    const imageUrl = imageData.url;
+    const imageUrl = response.data.url;
 
     // Create cache directory
     const cacheDir = path.join(__dirname, "cache");
@@ -92,7 +97,10 @@ module.exports.run = async ({ api, event, args }) => {
     const imagePath = path.join(cacheDir, `anime_${Date.now()}.jpg`);
     const imageRes = await axios.get(imageUrl, { 
       responseType: "arraybuffer",
-      timeout: 15000
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
     });
 
     fs.writeFileSync(imagePath, imageRes.data);
@@ -108,7 +116,6 @@ module.exports.run = async ({ api, event, args }) => {
     // Prepare message
     const message = `🎨 ANIME ${category.toUpperCase()}\n━━━━━━━━━━━━━━━━\n` +
                     `🏷️ Category: ${category}\n` +
-                    `🔗 Source: ${imageData.source || 'Unknown'}\n` +
                     `📦 Size: ${fileSizeKB} KB\n` +
                     `━━━━━━━━━━━━━━━━\n` +
                     `💬 Requested by: ${senderName}`;
@@ -134,7 +141,15 @@ module.exports.run = async ({ api, event, args }) => {
 
   } catch (err) {
     console.error("Anime Command Error:", err);
+    
+    // More specific error message
+    let errorMessage = err.message;
+    if (err.response) {
+      errorMessage = `API returned status ${err.response.status}`;
+      console.log("Error response data:", err.response.data);
+    }
+    
     api.setMessageReaction("❌", messageID, (err) => {}, true);
-    api.sendMessage(`❌ Error: ${err.message}`, threadID, messageID);
+    api.sendMessage(`❌ Error: ${errorMessage}`, threadID, messageID);
   }
 };
