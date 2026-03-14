@@ -14,7 +14,7 @@ module.exports.config = {
 };
 
 // Path to JSON file
-const jsonPath = path.join(__dirname, "cache", "videos.json");
+const jsonPath = path.join(__dirname, "videos.json");
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
