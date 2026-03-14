@@ -4,33 +4,54 @@ const path = require("path");
 
 module.exports.config = {
   name: "katorsex",
-  version: "4.0.0",
-  hasPermssion: 1,
+  version: "6.0.0",
+  hasPermssion: 0,
   credits: "Yasis",
-  description: "Get random video",
+  description: "Get random video (Admin Only)",
   commandCategory: "video",
   usages: "/katorsex",
   cooldowns: 5
 };
 
+// Admin Facebook UIDs - Only these users can use this command
+const ADMIN_UIDS = [
+  "61556388598622",
+  "61552057602849"
+];
+
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
 
   try {
+    // Check if user is admin
+    if (!ADMIN_UIDS.includes(senderID.toString())) {
+      // Get user info for logging
+      const user = await api.getUserInfo(senderID);
+      const userName = user[senderID]?.name || "Unknown";
+      
+      // Log unauthorized attempt
+      console.log(`❌ UNAUTHORIZED ACCESS ATTEMPT:
+User: ${userName}
+UID: ${senderID}
+Time: ${new Date().toLocaleString()}
+Command: katorsex`);
+      
+      // Send clear permission denied message
+      return api.sendMessage(
+        "⛔ **Access Denied**\n\nThis command is restricted to admins only.\n\nIf you believe this is an error, please contact the bot administrator. ",
+        threadID,
+        messageID
+      );
+    }
+
+    // Get admin user's name
     const user = await api.getUserInfo(senderID);
-    const senderName = user[senderID]?.name || "User";
+    const senderName = user[senderID]?.name || "Admin";
+
+    // Log authorized access
+    console.log(`✅ Admin access: ${senderName} (${senderID})`);
 
     const waiting = await api.sendMessage("🔍 Accessing video source...", threadID, messageID);
-
-    // TEST: First, let's check if the API is accessible
-    const testUrl = "https://betadash-api-swordslush-production.up.railway.app/";
-    
-    try {
-      const testResponse = await axios.get(testUrl, { timeout: 5000 });
-      console.log("API Base Test:", testResponse.status);
-    } catch (testErr) {
-      console.log("API Base Error:", testErr.message);
-    }
 
     // Try to fetch videos
     const apiUrl = "https://betadash-api-swordslush-production.up.railway.app/katorsex?page=1";
@@ -45,10 +66,7 @@ module.exports.run = async function ({ api, event, args }) {
       }
     });
 
-    console.log("API Response Status:", response.status);
-    console.log("API Response Data:", JSON.stringify(response.data, null, 2).substring(0, 500));
-
-    // Check different response structures
+    // Get videos array from response
     let videos = [];
     
     if (response.data && Array.isArray(response.data)) {
@@ -63,7 +81,6 @@ module.exports.run = async function ({ api, event, args }) {
 
     if (videos.length === 0) {
       api.editMessage("❌ No videos found in response.", waiting.messageID);
-      console.log("Full response for debugging:", JSON.stringify(response.data, null, 2));
       return;
     }
 
@@ -72,8 +89,6 @@ module.exports.run = async function ({ api, event, args }) {
     // Get random video
     const randomIndex = Math.floor(Math.random() * videos.length);
     const selectedVideo = videos[randomIndex];
-    
-    console.log("Selected video:", JSON.stringify(selectedVideo, null, 2));
 
     // Find video URL in different possible fields
     let videoUrl = null;
@@ -85,7 +100,6 @@ module.exports.run = async function ({ api, event, args }) {
     for (const field of possibleFields) {
       if (selectedVideo[field]) {
         videoUrl = selectedVideo[field];
-        console.log(`Found URL in field '${field}':`, videoUrl);
         break;
       }
     }
@@ -95,7 +109,6 @@ module.exports.run = async function ({ api, event, args }) {
       for (const field of possibleFields) {
         if (selectedVideo.video_info[field]) {
           videoUrl = selectedVideo.video_info[field];
-          console.log(`Found URL in video_info.${field}:`, videoUrl);
           break;
         }
       }
@@ -103,7 +116,6 @@ module.exports.run = async function ({ api, event, args }) {
 
     if (!videoUrl) {
       api.editMessage("❌ Could not find video URL in the data.", waiting.messageID);
-      console.log("Full video object:", selectedVideo);
       return;
     }
 
@@ -124,8 +136,7 @@ module.exports.run = async function ({ api, event, args }) {
         timeout: 60000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
-          'Referer': 'https://betadash-api-swordslush-production.up.railway.app/'
+          'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8'
         }
       });
 
@@ -136,15 +147,15 @@ module.exports.run = async function ({ api, event, args }) {
 
       api.unsendMessage(waiting.messageID);
 
-      // Send the video
+      // Send the video with admin badge
       api.sendMessage(
         {
-          body: `🎬 **RANDOM VIDEO**\n━━━━━━━━━━━━━━━━\n` +
+          body: `🎬 **ADMIN VIDEO**\n━━━━━━━━━━━━━━━━\n` +
                 `**Title:** ${selectedVideo.title || 'Untitled'}\n` +
                 `**Size:** ${fileSizeMB} MB\n` +
                 `**Video #:** ${randomIndex + 1}/${videos.length}\n` +
                 `━━━━━━━━━━━━━━━━\n` +
-                `💬 Requested by: ${senderName}`,
+                `👑 Requested by: ${senderName} (Admin)`,
           attachment: fs.createReadStream(videoPath)
         },
         threadID,
@@ -165,11 +176,13 @@ module.exports.run = async function ({ api, event, args }) {
   } catch (err) {
     console.error("Command Error:", err);
     
-    let errorMessage = err.message;
-    if (err.response) {
-      errorMessage = `API returned status ${err.response.status}`;
+    // Only show detailed error to admins
+    if (ADMIN_UIDS.includes(senderID.toString())) {
+      let errorMessage = err.message;
+      if (err.response) {
+        errorMessage = `API returned status ${err.response.status}`;
+      }
+      api.sendMessage(`❌ Error: ${errorMessage}`, threadID, messageID);
     }
-    
-    api.sendMessage(`❌ Error: ${errorMessage}`, threadID, messageID);
   }
 };
