@@ -74,7 +74,7 @@ module.exports.run = async function ({ api, event, args }) {
     api.sendTypingIndicator(threadID, true);
     
     const searching = await api.sendMessage(
-      `🔊 AI is thinking and preparing voice response for ${firstName}...`, 
+      ``, 
       threadID, 
       messageID
     );
@@ -144,7 +144,7 @@ module.exports.run = async function ({ api, event, args }) {
 
     // Update searching message
     api.editMessage(
-      `✅ Voice response ready for ${firstName}! (${fileSizeInKB} KB)`, 
+      ``, 
       searching.messageID
     );
 
