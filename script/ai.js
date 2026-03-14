@@ -4,10 +4,10 @@ const path = require("path");
 
 module.exports.config = {
   name: "ai",
-  version: "7.0.0",
+  version: "8.0.0",
   hasPermssion: 0,
   credits: "selov",
-  description: "AI with deep male voice response",
+  description: "AI with normal boy voice response",
   commandCategory: "search",
   usages: "/ai <text>",
   cooldowns: 3,
@@ -63,24 +63,16 @@ module.exports.run = async function ({ api, event, args }) {
       );
     }
 
-    // Send typing indicator
+    // Send typing indicator (visual only, no message)
     api.sendTypingIndicator(threadID, true);
 
-    const searching = await api.sendMessage(
-      `🔊 AI is thinking and preparing deep male voice response for ${firstName}...`, 
-      threadID, 
-      messageID
-    );
-
-    // Enhance prompt with user's name
+    // Get AI response (no visible message)
     const enhancedPrompt = `The user's name is ${firstName} (full name: ${senderName}). Please address them by their name in your response naturally. Keep your response concise and friendly. Question: ${prompt}`;
-
-    // Get AI response
     const aiUrl = `https://vern-rest-api.vercel.app/api/chatgpt4?prompt=${encodeURIComponent(enhancedPrompt)}`;
     const aiResponse = await axios.get(aiUrl);
 
     if (!aiResponse.data) {
-      return api.editMessage("❌ No response from AI server.", searching.messageID);
+      return api.sendMessage("❌ No response from AI server.", threadID, messageID);
     }
 
     // Detect response format
@@ -91,7 +83,7 @@ module.exports.run = async function ({ api, event, args }) {
       aiResponse.data.answer;
 
     if (!replyText) {
-      return api.editMessage("❌ AI returned an unknown response format.", searching.messageID);
+      return api.sendMessage("❌ AI returned an unknown response format.", threadID, messageID);
     }
 
     // Store conversation in memory
@@ -114,15 +106,12 @@ module.exports.run = async function ({ api, event, args }) {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    // Convert text to speech with DEEP MALE VOICE
-    // Using en-US-Wavenet-D which is a deep male voice
+    // Convert text to speech with NORMAL BOY VOICE
+    // Using en-US-Wavenet-A which is a standard male voice
     const ttsText = replyText.substring(0, 200); // Limit to 200 chars
     
-    // Google TTS with male voice parameter
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodeURIComponent(ttsText)}`;
-    
-    // Note: For a deeper male voice, we could also use:
-    // const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(ttsText)}`;
+    // Using StreamElements API for better voice quality
+    const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=Joey&text=${encodeURIComponent(ttsText)}`;
     
     const audioPath = path.join(cacheDir, `tts_${Date.now()}.mp3`);
     const audioResponse = await axios.get(ttsUrl, { 
@@ -135,18 +124,7 @@ module.exports.run = async function ({ api, event, args }) {
 
     fs.writeFileSync(audioPath, audioResponse.data);
 
-    // Get file size
-    const stats = fs.statSync(audioPath);
-    const fileSizeInKB = (stats.size / 1024).toFixed(2);
-
-    // Update searching message
-    api.editMessage(
-      `✅ Deep male voice response ready for ${firstName}!\n` +
-      `📦 Size: ${fileSizeInKB} KB`,
-      searching.messageID
-    );
-
-    // Send audio only
+    // Send ONLY audio - no text messages at all
     api.sendMessage(
       {
         attachment: fs.createReadStream(audioPath)
@@ -166,19 +144,9 @@ module.exports.run = async function ({ api, event, args }) {
       messageID
     );
 
-    // Optional: Also send text version for clarity (remove if you want audio only)
-    api.sendMessage(
-      `📝 **AI Response for ${firstName}:**\n\n${replyText}`,
-      threadID,
-      messageID
-    );
-
   } catch (err) {
     console.error("AI TTS Error:", err);
-    return api.sendMessage(
-      `❌ Failed to generate voice response.\nError: ${err.message}`,
-      threadID,
-      messageID
-    );
+    // Silent fail - no error message shown to user
+    // Just log to console
   }
 };
