@@ -4,24 +4,23 @@ const path = require("path");
 
 module.exports.config = {
   name: "ai2",
-  version: "1.0.0",
+  version: "1.3.0",
   hasPermssion: 0,
-  credits: "selov",
-  description: "AI with ElevenLabs voice response",
+  credits: "Yasis",
+  description: "AI with Puter.com voice response (audio only)",
   commandCategory: "search",
-  usages: "ai2 <ask a questions>",
+  usages: "/ai2 <ask a questions>",
   cooldowns: 3
 };
 
 // Simple memory per thread with user profiles
 const memory = {};
 
-// ElevenLabs API configuration
-const ELEVENLABS_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0IjoiZ3VpIiwidiI6IjAuMC4wIiwidSI6IkhoVnFVQ1FMUUIrVTN2UmtjRjBCVGc9PSIsInV1IjoibnZmTVB1aGZRbEc5ZitTaUl5cU1VUT09IiwiaWF0IjoxNzczNDcxOTgxfQ.aDo31XL_rV4ZCLcb9iaAsgoAYnpAlwQbPtaaU4c8hQM"; // You need to sign up at elevenlabs.io
-const VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Default voice (Rachel)
+// Puter.com authentication token
+const PUTER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0IjoiZ3VpIiwidiI6IjAuMC4wIiwidSI6IkhoVnFVQ1FMUUIrVTN2UmtjRjBCVGc9PSIsInV1IjoibnZmTVB1aGZRbEc5ZitTaUl5cU1VUT09IiwiaWF";
 
 module.exports.run = async function ({ api, event, args }) {
-  const { threadID, messageID, attachments, senderID } = event;
+  const { threadID, messageID, senderID } = event;
 
   let prompt = args.join(" ").trim();
 
@@ -29,55 +28,26 @@ module.exports.run = async function ({ api, event, args }) {
     // Get user info
     const user = await api.getUserInfo(senderID);
     const userData = user[senderID];
-    const senderName = userData?.name || "User";
-    const firstName = senderName.split(' ')[0] || senderName;
-
-    // Initialize memory
-    if (!memory[threadID]) {
-      memory[threadID] = {
-        users: {},
-        conversations: []
-      };
-    }
-    
-    // Store user info
-    memory[threadID].users[senderID] = {
-      name: senderName,
-      firstName: firstName,
-      lastSeen: Date.now(),
-      interactions: (memory[threadID].users[senderID]?.interactions || 0) + 1
-    };
-
-    // Check image
-    if (attachments && attachments.length > 0) {
-      const photo = attachments.find(a => a.type === "photo");
-      if (photo) {
-        const imageUrl = photo.url;
-        prompt = `Describe this photo in detail like a human. The user's name is ${firstName}:\n${imageUrl}`;
-      }
-    }
+    const firstName = userData?.name?.split(' ')[0] || "User";
 
     if (!prompt) {
       return api.sendMessage(
-        `📌 Hello ${firstName}! Please ask me a question.\n\nExample: ai2 what is your name?`,
+        `📌 Hello ${firstName}! Please ask me a question.\n\nExample: /ai2 what is your name?`,
         threadID,
         messageID
       );
     }
 
-    // Send typing indicator
+    // Send typing indicator only
     api.sendTypingIndicator(threadID, true);
 
-    // Enhance prompt with user's name
-    const enhancedPrompt = `The user's name is ${firstName} (full name: ${senderName}). Please address them by their name in your response naturally. Keep your response concise and friendly. Question: ${prompt}`;
-
     // Get AI response from ChatGPT
-    const aiUrl = `https://deku-rest-api-spring.onrender.com/chatgpt?prompt=${encodeURIComponent(enhancedPrompt)}`;
-    const aiResponse = await axios.get(aiUrl);
-
+    const aiUrl = `https://deku-rest-api-spring.onrender.com/chatgpt?prompt=${encodeURIComponent(prompt)}`;
+    
+    const aiResponse = await axios.get(aiUrl, { timeout: 15000 });
+    
     let replyText = "I'm sorry, I couldn't process that request.";
 
-    // Handle different response formats
     if (aiResponse.data) {
       if (aiResponse.data.response) replyText = aiResponse.data.response;
       else if (aiResponse.data.message) replyText = aiResponse.data.message;
@@ -86,62 +56,41 @@ module.exports.run = async function ({ api, event, args }) {
       else if (typeof aiResponse.data === 'string') replyText = aiResponse.data;
     }
 
-    // Store conversation
-    memory[threadID].conversations.push({
-      user: senderID,
-      userName: firstName,
-      prompt: prompt,
-      response: replyText,
-      timestamp: Date.now()
-    });
-
-    // Keep only last 10 conversations
-    if (memory[threadID].conversations.length > 10) {
-      memory[threadID].conversations.shift();
-    }
-
     // Create cache directory
     const cacheDir = path.join(__dirname, "cache");
     if (!fs.existsSync(cacheDir)) {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    // Convert text to speech using ElevenLabs (professional voice)
-    const ttsText = replyText.substring(0, 500); // ElevenLabs has higher limit
+    // Convert text to speech using Puter.com
+    const ttsText = replyText.substring(0, 500);
     
-    // ElevenLabs API endpoint
-    const ttsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
+    const ttsUrl = `https://api.puter.com/v2/ai/txt2speech`;
     
     const ttsPayload = {
       text: ttsText,
-      model_id: "eleven_multilingual_v2",
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.5,
-        style: 0.5,
-        use_speaker_boost: true
-      }
+      provider: "elevenlabs",
+      model: "eleven_multilingual_v2",
+      voice: "21m00Tcm4TlvDq8ikWAM", // Rachel voice (female)
+      output_format: "mp3_44100_128"
     };
 
     const audioPath = path.join(cacheDir, `ai2_${Date.now()}.mp3`);
     
     const audioResponse = await axios.post(ttsUrl, ttsPayload, {
       responseType: "arraybuffer",
-      timeout: 45000,
+      timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-        'xi-api-key': ELEVENLABS_API_KEY,
-        'Accept': 'audio/mpeg'
+        'Authorization': `Bearer ${PUTER_TOKEN}`,
+        'Origin': 'https://puter.com',
+        'Referer': 'https://puter.com/'
       }
     });
 
     fs.writeFileSync(audioPath, audioResponse.data);
 
-    // Get file size
-    const stats = fs.statSync(audioPath);
-    const fileSizeInKB = (stats.size / 1024).toFixed(2);
-
-    // Send ONLY audio
+    // Send ONLY audio - no text at all
     api.sendMessage(
       {
         attachment: fs.createReadStream(audioPath)
@@ -162,7 +111,7 @@ module.exports.run = async function ({ api, event, args }) {
     );
 
   } catch (err) {
-    console.error("AI2 TTS Error:", err);
-    // Silent fail
+    console.error("AI2 Command Error:", err);
+    // Silent fail - no error message shown to user
   }
 };
