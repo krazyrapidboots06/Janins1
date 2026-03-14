@@ -1,122 +1,48 @@
-/**
- * Pornhub Video Search – fetch one random video via the public API
- *
- * Usage:
- *   !pornsearch <query>
- */
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-
 module.exports.config = {
-  name: 'pornsearch',
-  version: '1.0.0',
+  name: "pornsearch",
+  version: "1.0.0", 
   role: 0,
-  credits: 'selov',
-  description: 'Search and get a single video from PornHub via the betadash‑api.',
-  usages: '<query>',
-  cooldown: 10, // seconds
+  credits: "syntaxt0x1c",
+  description: "Search Pornhub for videos.",
+  usages: "[keyword]",
+  cooldown: 5,
 };
 
-module.exports.run = async function ({ api, event, args }) {
-  const { threadID, messageID } = event;
-
-  if (!args.join(' ')) {
-    return api.sendMessage('⚠️ You need to provide a search term.', threadID, messageID);
-  }
-
-  // Build the query string
-  const encodedQuery = encodeURIComponent(args.join(' '));
-  const url = `https://betadash-api-swordslush-production.up.railway.app/pornhub/search?q=${encodedQuery}&page=1&limit=1`;
-
-  api.setMessageReaction('⏳', messageID, () => {}, true);
-
+module.exports.run = async ({ api, event }) => {
+  const axios = require('axios');
+  
   try {
-    // Set timeout to protect against slow API responses
-    const res = await axios.get(url, { timeout: 30000 });
+    // Get search term from user
+    const query = (event.body).slice(10);
+    
+    if (!query) return await api.sendMessage("Please provide a keyword.", event.threadID, event.messageID);
 
-    let videoUrl;
+    // Construct API request URL with proper encoding
+    const url = `https://betadash-api-swordslush-production.up.railway.app/pornhub/search?q=${encodeURIComponent(query)}`;
 
-    if (Array.isArray(res.data)) {
-      if (!res.data.length) throw new Error('No results');
-      videoUrl = res.data[0].url;
-    } else if (typeof res.data === 'object') {
-      const keysToCheck = ['url', 'link', 'video_url'];
-      
-      for (const key of keysToCheck) {
-        if (res.data[key]) {
-          videoUrl = res.data[key];
-          break;
-        }
-      }
-      if (!videoUrl && Array.isArray(res.data.results)) {
-        // Fallback: search results may have different field names
-        const firstRes = res.data.results[0] || {};
-        for (const key of keysToCheck) {
-          if (firstRes[key]) {
-            videoUrl = firstRes[key];
-            break;
-          }
-        }
-      }
+    // Send request to Pornhub search endpoint
+    const response = await axios.get(url);
+    
+    if (!response.data || !Array.isArray(response.data.videos)) {
+      return await api.sendMessage("No results found.", event.threadID, event.messageID);
     }
 
-    if (!videoUrl) throw new Error('Video URL not found');
-
-    // ---- DOWNLOAD the video ------------------------------------------
+    // Get first result for demonstration purposes
+    const video = response.data.videos[0];
     
-    const cacheDir = path.join(__dirname, 'cache');
-    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+    // Format metadata
+    let msg = `PornHub search for "${query}":
+Title: ${video.title}
+Duration: ${Math.floor(video.duration / 60)}:${String(video.duration % 60).padStart(2, '0')}
+Views: ${video.views.toLocaleString()}
+Likes: ${video.likes}
+`;
 
-    // Extract filename from URL
-    let fileName = videoUrl.split('/').pop() || `video_${Date.now()}`;
-    if (fileName.includes('?')) fileName = fileName.split('?')[0];
-    
-    const filePath = path.join(cacheDir, `${fileName}.mp4`);
+    // Send results
+    await api.sendMessage(msg + video.link, event.threadID);
 
-    try {
-      console.log('[PornSearch] Downloading:', videoUrl);
-      
-      // Download the file with a reasonable timeout
-      const videoData = await axios.get(videoUrl, { 
-        responseType: 'arraybuffer',
-        timeout: 60000,
-        headers: { Accept: 'video/mp4' }
-      });
-
-      fs.writeFileSync(filePath, videoData.data);
-
-      // ---- SEND as attachment -----------------------------------------
-      
-      api.sendMessage(
-        {
-          body: `🔍 Here’s "${args.join(' ') || 'a PornHub video'}":`,
-          attachment: fs.createReadStream(filePath),
-        },
-        threadID,
-        () => { 
-          try {
-            fs.unlinkSync(filePath);
-          } catch (e) {} 
-        }, // cleanup callback
-        messageID
-      );
-
-    } finally {
-      api.setMessageReaction('✅', messageID, () => {}, true);
-      
-      console.log('[PornSearch] Video sent:', args.join(' ') || 'unknown query');
-    }
-    
-  } catch (err) {
-    console.error('[PornSearch]', err.message);
-    api.setMessageReaction('❌', messageID, () => {}, true);
-    
-    const errMsg = `❌ ${args.join(' ')}: ${err.message}`;
-    if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
-      errMsg += `\nDebug (query): "${encodedQuery}"\nError code: ${err.code}`;
-    }
-    
-    api.sendMessage(errMsg, threadID, messageID);
+  } catch (error) {
+    console.error(error);
+    return await api.sendMessage("Error fetching search results.", event.threadID);
   }
 };
