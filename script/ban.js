@@ -6,7 +6,7 @@ const moment = require("moment-timezone");
 module.exports.config = {
   name: "ban",
   version: "1.4.0",
-  hasPermssion: 1, // Group admins only
+  role: 1, // Group admins only
   credits: "selov",
   description: "Ban/unban members from group chat",
   commandCategory: "admin",
