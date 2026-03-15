@@ -5,12 +5,12 @@ const moment = require("moment-timezone");
 
 module.exports.config = {
   name: "accept",
-  version: "2.4.0",
+  version: "3.0.0",
   role: 2,
   credits: "selov",
-  description: "Manage friend requests",
+  description: "Accept all pending friend requests",
   commandCategory: "social",
-  usages: "/accept - Show pending friend requests",
+  usages: "/accept - Show pending friend requests, then reply with 'add all'",
   cooldowns: 8
 };
 
@@ -18,7 +18,7 @@ module.exports.config = {
 if (!global.acceptReplyHandlers) global.acceptReplyHandlers = {};
 
 module.exports.run = async function ({ api, event, args }) {
-  const { threadID, messageID, senderID, messageReply } = event; // Added messageReply here
+  const { threadID, messageID, senderID } = event;
 
   try {
     // Fetch friend requests from Facebook
@@ -38,7 +38,7 @@ module.exports.run = async function ({ api, event, args }) {
     }
 
     // Format the list of requests
-    let msg = "╔═══《 **FRIEND REQUESTS** 》═══╗\n\n";
+    let msg = "╔═══《 **PENDING FRIEND REQUESTS** 》═══╗\n\n";
     
     listRequest.forEach((user, index) => {
       msg += `💠 **No. ${index + 1}**\n`;
@@ -48,11 +48,9 @@ module.exports.run = async function ({ api, event, args }) {
       msg += "━━━━━━━━━━━━━━━━\n";
     });
 
-    msg += "\n💡 **Reply with:**\n";
-    msg += "✅ **add <number>** — Accept request\n";
-    msg += "❌ **del <number>** — Reject request\n";
-    msg += "💫 **add all** — Accept all\n";
-    msg += "🔥 **del all** — Reject all\n\n";
+    msg += `\n📊 **Total Requests:** ${listRequest.length}\n`;
+    msg += "━━━━━━━━━━━━━━━━\n";
+    msg += "💡 **Reply with:** `add all` to accept ALL requests\n\n";
     msg += "⏳ This menu will auto-delete in 2 minutes.\n";
     msg += "╚═══════════════════╝";
 
@@ -72,7 +70,7 @@ module.exports.run = async function ({ api, event, args }) {
           delete global.acceptReplyHandlers[info.messageID];
         }, 2 * 60 * 1000)
       };
-    }, messageID);
+    });
 
   } catch (err) {
     console.error("Accept Command Error:", err);
@@ -80,14 +78,14 @@ module.exports.run = async function ({ api, event, args }) {
   }
 };
 
-// Handle replies to process accept/reject
+// Handle replies to accept all requests
 module.exports.handleReply = async function ({ api, event }) {
   const { threadID, messageID, senderID, type, messageReply, body } = event;
 
   // CHECK 1: Is this a reply to a message?
   if (type !== "message_reply") {
     return api.sendMessage(
-      "❌ Please reply to the bot message with your choice.",
+      "❌ Please reply to the bot message with 'add all'.",
       threadID,
       messageID
     );
@@ -99,7 +97,7 @@ module.exports.handleReply = async function ({ api, event }) {
 
   if (!handlerData) {
     return api.sendMessage(
-      "❌ This is not a valid friend request list or it has expired.",
+      "❌ This friend request list has expired. Please use /accept again.",
       threadID,
       messageID
     );
@@ -117,24 +115,42 @@ module.exports.handleReply = async function ({ api, event }) {
   // Clear the auto-delete timeout
   clearTimeout(handlerData.unsendTimeout);
 
-  const args = body.trim().toLowerCase().split(/\s+/);
+  const replyText = body.trim().toLowerCase();
   const { listRequest, messageID: replyMessageID } = handlerData;
 
-  // Validate command format
-  if (args.length < 2) {
+  // CHECK 4: Is the reply exactly "add all"?
+  if (replyText !== "add all") {
+    api.sendMessage(
+      "❌ Invalid reply. Please reply with exactly: `add all`",
+      threadID,
+      messageID
+    );
+    return;
+  }
+
+  // No requests to process?
+  if (listRequest.length === 0) {
     api.unsendMessage(replyMessageID);
     delete global.acceptReplyHandlers[repliedMessageID];
     return api.sendMessage(
-      "❌ Invalid format. Use: add <number> or del <number>",
+      "❌ No friend requests to accept.",
       threadID,
       messageID
     );
   }
 
+  // Send processing message
+  const processingMsg = await api.sendMessage(
+    `⏳ Accepting ${listRequest.length} friend request(s)... Please wait.`,
+    threadID
+  );
+
   // Prepare GraphQL form
   const form = {
     av: api.getCurrentUserID(),
     fb_api_caller_class: "RelayModern",
+    fb_api_req_friendly_name: "FriendingCometFriendRequestConfirmMutation",
+    doc_id: "3147613905362928",
     variables: {
       input: {
         source: "friends_tab",
@@ -146,55 +162,13 @@ module.exports.handleReply = async function ({ api, event }) {
     }
   };
 
-  // Determine action type
-  let actionType;
-  if (args[0] === "add") {
-    form.fb_api_req_friendly_name = "FriendingCometFriendRequestConfirmMutation";
-    form.doc_id = "3147613905362928";
-    actionType = "Accepted";
-  } else if (args[0] === "del" || args[0] === "delete" || args[0] === "reject") {
-    form.fb_api_req_friendly_name = "FriendingCometFriendRequestDeleteMutation";
-    form.doc_id = "4108254489275063";
-    actionType = "Rejected";
-  } else {
-    api.unsendMessage(replyMessageID);
-    delete global.acceptReplyHandlers[repliedMessageID];
-    return api.sendMessage(
-      "❌ Invalid command. Use: add or del",
-      threadID,
-      messageID
-    );
-  }
-
-  // Determine target request numbers
-  let targetNumbers = [];
-  if (args[1] === "all") {
-    targetNumbers = Array.from({ length: listRequest.length }, (_, i) => (i + 1).toString());
-  } else {
-    targetNumbers = [args[1]];
-  }
-
-  const targetRequests = [];
+  // Process all requests
   const promises = [];
   const success = [];
   const failed = [];
 
-  // Process each target number
-  for (const num of targetNumbers) {
-    const index = parseInt(num) - 1;
-    
-    if (isNaN(index) || index < 0 || index >= listRequest.length) {
-      failed.push(`🚫 Invalid number: ${num}`);
-      continue;
-    }
-
-    const user = listRequest[index];
-    if (!user) {
-      failed.push(`🚫 Cannot find request #${num}`);
-      continue;
-    }
-
-    // Prepare the request
+  for (const user of listRequest) {
+    // Prepare the request for each user
     const requestForm = {
       ...form,
       variables: {
@@ -207,62 +181,50 @@ module.exports.handleReply = async function ({ api, event }) {
     };
     
     requestForm.variables = JSON.stringify(requestForm.variables);
-    
-    targetRequests.push(user);
     promises.push(api.httpPost("https://www.facebook.com/api/graphql/", requestForm));
   }
-
-  if (promises.length === 0) {
-    api.unsendMessage(replyMessageID);
-    delete global.acceptReplyHandlers[repliedMessageID];
-    return api.sendMessage(
-      "❌ No valid requests to process.",
-      threadID,
-      messageID
-    );
-  }
-
-  // Send processing message
-  const processingMsg = await api.sendMessage(
-    `⏳ Processing ${promises.length} request(s)...`,
-    threadID
-  );
 
   // Execute all requests
   const results = await Promise.allSettled(promises);
 
   results.forEach((result, index) => {
-    const user = targetRequests[index];
+    const user = listRequest[index];
     if (result.status === "fulfilled") {
       try {
         const parsed = JSON.parse(result.value);
         if (!parsed.errors) {
-          success.push(`✅ **${actionType}:** ${user.node.name}`);
+          success.push(`✅ ${user.node.name}`);
         } else {
-          failed.push(`❌ **Failed:** ${user.node.name} - API Error`);
+          failed.push(`❌ ${user.node.name} - API Error`);
         }
       } catch (e) {
-        failed.push(`❌ **Failed:** ${user.node.name} - Invalid response`);
+        failed.push(`❌ ${user.node.name} - Invalid response`);
       }
     } else {
-      failed.push(`❌ **Failed:** ${user.node.name} - ${result.reason?.message || 'Unknown error'}`);
+      failed.push(`❌ ${user.node.name} - ${result.reason?.message || 'Unknown error'}`);
     }
   });
 
   // Prepare response message
-  let replyMsg = "";
-  if (success.length > 0) replyMsg += success.join("\n") + "\n";
-  if (failed.length > 0) replyMsg += failed.join("\n");
+  let replyMsg = "**FRIEND REQUESTS RESULT**\n";
+  replyMsg += "━━━━━━━━━━━━━━━━\n";
+  replyMsg += `✅ **Accepted:** ${success.length}/${listRequest.length}\n`;
+  replyMsg += `❌ **Failed:** ${failed.length}/${listRequest.length}\n`;
+  replyMsg += "━━━━━━━━━━━━━━━━\n\n";
+  
+  if (success.length > 0) {
+    replyMsg += "**✅ Accepted:**\n" + success.join("\n") + "\n\n";
+  }
+  
+  if (failed.length > 0) {
+    replyMsg += "**❌ Failed:**\n" + failed.join("\n");
+  }
 
   // Delete processing message
   api.unsendMessage(processingMsg.messageID);
 
   // Send results
-  if (replyMsg) {
-    api.sendMessage(replyMsg, threadID, messageID);
-  } else {
-    api.sendMessage("❌ No requests were processed.", threadID, messageID);
-  }
+  api.sendMessage(replyMsg, threadID, messageID);
 
   // Delete the original request list
   api.unsendMessage(replyMessageID);
