@@ -6,7 +6,7 @@ module.exports.config = {
   name: "katorsex",
   version: "4.0.0",
   hasPermssion: 0,
-  credits: "Yasis",
+  credits: "selov",
   description: "Get random video",
   commandCategory: "video",
   usages: "/katorsex",
