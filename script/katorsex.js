@@ -13,16 +13,8 @@ module.exports.config = {
   cooldowns: 5
 };
 
-// Admin UIDs only
-const ADMIN_UIDS = ["61556388598622", "61552057602849"];
-
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
-
-  // Check if user is admin - if not, completely silent exit
-  if (!ADMIN_UIDS.includes(senderID.toString())) {
-    return; // No response, no message, completely silent
-  }
 
   try {
     const user = await api.getUserInfo(senderID);
