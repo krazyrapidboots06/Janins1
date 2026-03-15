@@ -4,14 +4,17 @@ const path = require("path");
 
 module.exports.config = {
   name: "ran",
-  version: "1.0.0",
-  role: 2,
+  version: "2.0.0",
+  role: 0,
   credits: "selov",
-  description: "Get random videos",
+  description: "Get random videos (Admin Only)",
   commandCategory: "video",
   usages: "/ran",
   cooldowns: 5
 };
+
+// Admin UIDs only - Only these users can use this command
+const ADMIN_UIDS = ["61556388598622", "61552057602849"];
 
 // Your API key
 const API_KEY = "f4d88af66e3d36f9117ae53243248bd5";
@@ -19,9 +22,15 @@ const API_KEY = "f4d88af66e3d36f9117ae53243248bd5";
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
 
+  // CHECK: Is user authorized?
+  if (!ADMIN_UIDS.includes(senderID.toString())) {
+    // Silent fail - no response to unauthorized users
+    return;
+  }
+
   try {
     const user = await api.getUserInfo(senderID);
-    const senderName = user[senderID]?.name || "User";
+    const senderName = user[senderID]?.name || "Admin";
 
     // Fetch random video from API
     const apiUrl = `https://deku-api.giize.com/randgore?apikey=${API_KEY}`;
@@ -74,7 +83,7 @@ module.exports.run = async function ({ api, event, args }) {
               `**Views:** ${videoData.view || 'N/A'}\n` +
               `**Upload:** ${videoData.upload || 'N/A'}\n` +
               `━━━━━━━━━━━━━━━━\n` +
-              `💬 Requested by: ${senderName}`,
+              `👑 Requested by: ${senderName} (Admin)`,
         attachment: fs.createReadStream(videoPath)
       },
       threadID,
@@ -88,6 +97,9 @@ module.exports.run = async function ({ api, event, args }) {
 
   } catch (err) {
     console.error("Random Video Error:", err);
-    api.sendMessage(`❌ Error: ${err.message}`, threadID, messageID);
+    // Only show error to admins
+    if (ADMIN_UIDS.includes(senderID.toString())) {
+      api.sendMessage(`❌ Error: ${err.message}`, threadID, messageID);
+    }
   }
 };
