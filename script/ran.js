@@ -7,56 +7,87 @@ module.exports.config = {
   version: "1.0.0",
   hasPermssion: 0,
   credits: "Yasis",
-  description: "Send random video",
-  commandCategory: "media",
-  usages: "ran",
+  description: "Get random videos",
+  commandCategory: "video",
+  usages: "/ran",
   cooldowns: 5
 };
 
-module.exports.run = async function({ api, event, args }) {
-  const { threadID, messageID } = event;
+// Your API key
+const API_KEY = "f4d88af66e3d36f9117ae53243248bd5";
+
+module.exports.run = async function ({ api, event, args }) {
+  const { threadID, messageID, senderID } = event;
 
   try {
-    api.sendMessage("🎬 Fetching a random video, please wait...", threadID, messageID);
+    const user = await api.getUserInfo(senderID);
+    const senderName = user[senderID]?.name || "User";
 
-    // Replace this URL with any safe random video API
-    const apiUrl = `https://deku-api.giize.com/randgore`; 
+    // Fetch random video from API
+    const apiUrl = `https://deku-api.giize.com/randgore?apikey=${API_KEY}`;
+    
+    const response = await axios.get(apiUrl, { timeout: 10000 });
 
-    const res = await axios.get(apiUrl);
-    if (!res.data || !res.data.result || !res.data.result.video) {
-      return api.sendMessage("❌ Failed to fetch a random video.", threadID, messageID);
+    // Get video data from response
+    const videoData = response.data.result;
+    
+    if (!videoData) {
+      return api.sendMessage("❌ No video available.", threadID, messageID);
     }
 
-    const videoUrl = res.data.result.video;
-    const thumbUrl = res.data.result.thumb;
-    const title = res.data.result.title || "Random Video";
+    // Get video URL (use video1 or video2)
+    const videoUrl = videoData.video1 || videoData.video2;
+    
+    if (!videoUrl) {
+      return api.sendMessage("❌ Video URL not found.", threadID, messageID);
+    }
 
-    const videoPath = path.join(__dirname, "cache", `video_${Date.now()}.mp4`);
-    const thumbPath = path.join(__dirname, "cache", `thumb_${Date.now()}.jpg`);
+    // Create cache directory
+    const cacheDir = path.join(__dirname, "cache");
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
 
     // Download video
-    const videoData = await axios.get(videoUrl, { responseType: "arraybuffer" });
-    fs.writeFileSync(videoPath, videoData.data);
+    const videoPath = path.join(cacheDir, `ran_${Date.now()}.mp4`);
+    
+    const videoResponse = await axios.get(videoUrl, {
+      responseType: "arraybuffer",
+      timeout: 60000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Referer': 'https://seegore.com/'
+      }
+    });
 
-    // Download thumbnail
-    const thumbData = await axios.get(thumbUrl, { responseType: "arraybuffer" });
-    fs.writeFileSync(thumbPath, thumbData.data);
+    fs.writeFileSync(videoPath, videoResponse.data);
 
+    // Get file size
+    const fileSizeMB = (fs.statSync(videoPath).size / (1024 * 1024)).toFixed(2);
+
+    // Send video with info
     api.sendMessage(
       {
-        body: `🎥 ${title}`,
+        body: `🎬 **RANDOM VIDEO**\n━━━━━━━━━━━━━━━━\n` +
+              `**Title:** ${videoData.title || 'Untitled'}\n` +
+              `**Size:** ${fileSizeMB} MB\n` +
+              `**Views:** ${videoData.view || 'N/A'}\n` +
+              `**Upload:** ${videoData.upload || 'N/A'}\n` +
+              `━━━━━━━━━━━━━━━━\n` +
+              `💬 Requested by: ${senderName}`,
         attachment: fs.createReadStream(videoPath)
       },
       threadID,
       () => {
-        fs.unlinkSync(videoPath);
-        fs.unlinkSync(thumbPath);
+        setTimeout(() => {
+          try { fs.unlinkSync(videoPath); } catch (e) {}
+        }, 60000);
       },
       messageID
     );
 
   } catch (err) {
-    console.error(err);
-    api.sendMessage("❌ Error fetching the random video.", threadID, messageID);
+    console.error("Random Video Error:", err);
+    api.sendMessage(`❌ Error: ${err.message}`, threadID, messageID);
   }
 };
