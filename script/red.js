@@ -4,103 +4,54 @@ const path = require("path");
 
 module.exports.config = {
   name: "red",
-  version: "3.0.0",
+  version: "4.0.0",
   hasPermssion: 0,
   credits: "Yasis",
-  description: "Fetch a random video from the API",
-  commandCategory: "media",
+  description: "Get random videos from pinayot API",
+  commandCategory: "video",
   usages: "red",
   cooldowns: 5
 };
 
-module.exports.run = async function ({ api, event }) {
+module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID } = event;
 
   try {
-    const waiting = await api.sendMessage("🎬 Fetching a random video... please wait.", threadID, messageID);
+    const waiting = await api.sendMessage("🎬 Fetching random video...", threadID, messageID);
 
-    // Fetch videos from API
-    const response = await axios.get("https://betadash-api-swordslush-production.up.railway.app/sulasok?page=1", {
-      timeout: 10000,
+    // Fetch videos from the new API
+    const response = await axios.get("https://betadash-api-swordslush-production.up.railway.app/pinayot?page=1", {
+      timeout: 15000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
 
-    const data = response.data;
-    console.log("API Response:", JSON.stringify(data, null, 2).substring(0, 500)); // Debug log
-
-    // Try different possible response structures
-    let videos = [];
+    // The API returns data in result array
+    const videos = response.data.result || [];
     
-    if (data && Array.isArray(data)) {
-      videos = data;
-    } else if (data && data.results && Array.isArray(data.results)) {
-      videos = data.results;
-    } else if (data && data.data && Array.isArray(data.data)) {
-      videos = data.data;
-    } else if (data && data.videos && Array.isArray(data.videos)) {
-      videos = data.videos;
-    } else if (data && typeof data === 'object') {
-      // If it's an object with numbered keys (like {0: {...}, 1: {...}})
-      const possibleVideos = Object.values(data).filter(val => val && typeof val === 'object');
-      if (possibleVideos.length > 0) {
-        videos = possibleVideos;
-      }
-    }
-
     if (videos.length === 0) {
       api.unsendMessage(waiting.messageID);
-      return api.sendMessage("❌ No videos found in response.", threadID, messageID);
+      return api.sendMessage("❌ No videos found.", threadID, messageID);
     }
 
     // Get random video
     const randomIndex = Math.floor(Math.random() * videos.length);
     const videoInfo = videos[randomIndex];
-    
-    console.log("Selected video:", JSON.stringify(videoInfo, null, 2)); // Debug log
 
-    // Try all possible video URL fields
-    const possibleUrlFields = [
-      'videoUrl', 'video', 'url', 'link', 'mp4', 
-      'downloadUrl', 'download', 'src', 'source',
-      'file', 'content', 'path', 'play', 'playUrl'
-    ];
-    
-    let videoUrl = null;
-    for (const field of possibleUrlFields) {
-      if (videoInfo[field]) {
-        videoUrl = videoInfo[field];
-        console.log(`Found URL in field: ${field}`);
-        break;
-      }
-    }
-
-    // Check nested objects
-    if (!videoUrl && videoInfo.video_info) {
-      for (const field of possibleUrlFields) {
-        if (videoInfo.video_info[field]) {
-          videoUrl = videoInfo.video_info[field];
-          console.log(`Found URL in video_info.${field}`);
-          break;
-        }
-      }
-    }
+    // Extract video information
+    const videoUrl = videoInfo.videoUrl;
+    const description = videoInfo.description || "No description";
+    const uploadDate = videoInfo.uploadDate ? new Date(videoInfo.uploadDate).toLocaleDateString() : "Unknown";
+    const thumbnailUrl = videoInfo.thumbnailUrl;
 
     if (!videoUrl) {
       api.unsendMessage(waiting.messageID);
-      console.log("Full video object for debugging:", JSON.stringify(videoInfo, null, 2));
-      return api.sendMessage("❌ Video URL not found in API response.", threadID, messageID);
+      return api.sendMessage("❌ Video URL not found.", threadID, messageID);
     }
 
-    // Extract other info with fallbacks
-    const title = videoInfo.title || videoInfo.name || videoInfo.caption || "Untitled";
-    const duration = videoInfo.duration || videoInfo.length || "Unknown";
-    const views = videoInfo.views || videoInfo.view_count || videoInfo.play_count || "N/A";
-    const uploader = videoInfo.uploader || videoInfo.author || videoInfo.channel || videoInfo.username || "Unknown";
-
     // Update waiting message
-    api.editMessage(`📥 Downloading: ${title.substring(0, 50)}...`, waiting.messageID);
+    api.editMessage(`📥 Downloading video...`, waiting.messageID);
 
     // Create cache directory
     const cacheDir = path.join(__dirname, "cache", "red");
@@ -117,7 +68,7 @@ module.exports.run = async function ({ api, event }) {
         timeout: 60000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8'
+          'Referer': 'https://pinayot.com/'
         }
       });
 
@@ -137,10 +88,8 @@ module.exports.run = async function ({ api, event }) {
       api.sendMessage(
         {
           body: `🎬 **RANDOM VIDEO**\n━━━━━━━━━━━━━━━━\n` +
-                `**Title:** ${title}\n` +
-                `**Duration:** ${duration}\n` +
-                `**Views:** ${views}\n` +
-                `**Uploader:** ${uploader}\n` +
+                `**Description:** ${description}\n` +
+                `**Upload Date:** ${uploadDate}\n` +
                 `**Size:** ${fileSizeMB} MB\n` +
                 `━━━━━━━━━━━━━━━━`,
           attachment: fs.createReadStream(videoPath)
@@ -148,6 +97,7 @@ module.exports.run = async function ({ api, event }) {
         threadID,
         (err) => {
           if (err) console.error("Send error:", err);
+          // Delete file after sending
           setTimeout(() => {
             try { fs.unlinkSync(videoPath); } catch (e) {}
           }, 60000);
