@@ -4,7 +4,7 @@ const path = require("path");
 
 module.exports.config = {
   name: "red",
-  version: "4.0.0",
+  version: "5.0.0",
   hasPermssion: 0,
   credits: "Yasis",
   description: "Fetch a random video from the API",
@@ -19,16 +19,10 @@ module.exports.run = async function ({ api, event }) {
   try {
     const waiting = await api.sendMessage("🎬 Fetching a random video... please wait.", threadID, messageID);
 
-    // New API endpoint
+    // API endpoint
     const apiUrl = "https://betadash-api-swordslush-production.up.railway.app/lootedpinay?page=1";
     
-    const res = await axios.get(apiUrl, {
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json'
-      }
-    });
+    const res = await axios.get(apiUrl, { timeout: 10000 });
 
     // Get videos from response
     const videos = res.data.result || [];
@@ -41,17 +35,15 @@ module.exports.run = async function ({ api, event }) {
     // Get random video
     const randomVideo = videos[Math.floor(Math.random() * videos.length)];
     
-    // Extract video information
     const videoUrl = randomVideo.videoUrl;
     const title = randomVideo.title || "Untitled";
-    const thumbnail = randomVideo.image || "";
 
     if (!videoUrl) {
       api.unsendMessage(waiting.messageID);
       return api.sendMessage("❌ Video URL not found.", threadID, messageID);
     }
 
-    api.editMessage(`📥 Downloading: ${title}...`, waiting.messageID);
+    api.editMessage(`📥 Checking video size...`, waiting.messageID);
 
     // Create cache directory
     const cacheDir = path.join(__dirname, "cache", "red");
@@ -59,23 +51,89 @@ module.exports.run = async function ({ api, event }) {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    // Download video
+    // First, check the file size without downloading fully
+    try {
+      const headResponse = await axios.head(videoUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Referer': 'https://pinayflix.top/'
+        }
+      });
+
+      const contentLength = headResponse.headers['content-length'];
+      
+      if (contentLength) {
+        const fileSizeMB = (parseInt(contentLength) / (1024 * 1024)).toFixed(2);
+        
+        // Facebook limit is around 25MB for videos
+        if (parseInt(contentLength) > 25 * 1024 * 1024) {
+          api.unsendMessage(waiting.messageID);
+          return api.sendMessage(
+            `❌ Video is too large (${fileSizeMB} MB). Facebook limit is 25MB.\nTry another video.`,
+            threadID,
+            messageID
+          );
+        }
+      }
+    } catch (headErr) {
+      console.log("Head request failed, proceeding with download anyway:", headErr.message);
+    }
+
+    api.editMessage(`📥 Downloading: ${title}...`, waiting.messageID);
+
+    // Download video with size limit
     const videoPath = path.join(cacheDir, `red_${Date.now()}.mp4`);
     
     try {
       const videoResp = await axios.get(videoUrl, { 
-        responseType: "arraybuffer",
+        responseType: "stream",
         timeout: 60000,
+        maxContentLength: 30 * 1024 * 1024, // 30MB limit
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'User-Agent': 'Mozilla/5.0',
           'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8',
           'Referer': 'https://pinayflix.top/'
         }
       });
 
-      fs.writeFileSync(videoPath, videoResp.data);
+      // Check content length from response headers
+      const contentLength = videoResp.headers['content-length'];
+      if (contentLength) {
+        const fileSizeMB = (parseInt(contentLength) / (1024 * 1024)).toFixed(2);
+        if (parseInt(contentLength) > 25 * 1024 * 1024) {
+          api.unsendMessage(waiting.messageID);
+          return api.sendMessage(
+            `❌ Video is too large (${fileSizeMB} MB). Facebook limit is 25MB.`,
+            threadID,
+            messageID
+          );
+        }
+      }
+
+      // Create write stream
+      const writer = fs.createWriteStream(videoPath);
+      videoResp.data.pipe(writer);
+
+      // Wait for download to complete
+      await new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+
+      // Check final file size
+      const stats = fs.statSync(videoPath);
+      const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
       
-      const fileSizeMB = (fs.statSync(videoPath).size / (1024 * 1024)).toFixed(2);
+      if (stats.size > 25 * 1024 * 1024) {
+        fs.unlinkSync(videoPath);
+        api.unsendMessage(waiting.messageID);
+        return api.sendMessage(
+          `❌ Video is too large (${fileSizeMB} MB). Facebook limit is 25MB.`,
+          threadID,
+          messageID
+        );
+      }
 
       api.unsendMessage(waiting.messageID);
 
@@ -89,7 +147,11 @@ module.exports.run = async function ({ api, event }) {
           attachment: fs.createReadStream(videoPath)
         },
         threadID,
-        () => {
+        (err) => {
+          if (err) {
+            console.error("Send error:", err);
+            api.sendMessage("❌ Failed to send video. It might be too large.", threadID);
+          }
           setTimeout(() => {
             try { fs.unlinkSync(videoPath); } catch (e) {}
           }, 60000);
@@ -99,7 +161,18 @@ module.exports.run = async function ({ api, event }) {
 
     } catch (downloadErr) {
       console.error("Download error:", downloadErr);
-      api.editMessage("❌ Download failed.", waiting.messageID);
+      
+      // Check if it's a size limit error
+      if (downloadErr.message.includes('maxContentLength')) {
+        api.editMessage("❌ Video is too large (over 30MB). Try another video.", waiting.messageID);
+      } else {
+        api.editMessage("❌ Download failed. Try another video.", waiting.messageID);
+      }
+      
+      // Clean up if file was partially created
+      if (fs.existsSync(videoPath)) {
+        try { fs.unlinkSync(videoPath); } catch (e) {}
+      }
     }
 
   } catch (err) {
