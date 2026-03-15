@@ -6,7 +6,7 @@ module.exports.config = {
   name: "pinterest",
   version: "1.0.0",
   hasPermssion: 0,
-  credits: "Yasis",
+  credits: "selov",
   description: "Search images from Pinterest",
   commandCategory: "search",
   usages: "pinterest <search query>",
