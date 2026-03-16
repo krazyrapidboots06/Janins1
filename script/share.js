@@ -123,7 +123,7 @@ module.exports.config = {
   name: "share",
   version: "2.0.0",
   role: 0,
-  credits: "Developer",
+  credits: "selov",
   description: "Fast Facebook post sharing tool",
   commandCategory: "utility",
   usages: "/share [cookie] | [fb link] | [amount]",
@@ -141,7 +141,7 @@ module.exports.run = async function ({ api, event, args }) {
   // Validate input
   if (!cookie || !post_link || !limit) {
     return api.sendMessage(
-      '❌ Error: Please provide cookie, Facebook link, and amount separated by "|".\n\nExample: /share [cookie] | [fb link] | [amount]',
+      'Use Dummy account. ❌ Error: Please provide cookie, Facebook link, and amount separated by "|".\n\nExample: /share [cookie] | [fb link] | [amount]',
       threadID,
       messageID
     );
