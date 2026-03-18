@@ -7,10 +7,7 @@ const API_KEY = '8bba3b09c3bba06c435701f3fba84f83d8e124be47c9a42e07002f4952d24f6
 
 // List of possible working endpoints to try
 const endpoints = [
-  `/shawty?api_key=${API_KEY}`,
-  `/shawty?stream=false&api_key=${API_KEY}`,
-  `/tiktok/random?api_key=${API_KEY}`,
-  `/random/tiktok?api_key=${API_KEY}`
+  `/shawty?api_key=${API_KEY}`
 ];
 
 module.exports.config = {
