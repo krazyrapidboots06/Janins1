@@ -4,47 +4,69 @@ const path = require('path');
 
 module.exports.config = {
   name: "shawty",
-  version: "2.0.0",
+  version: "1.0.0",
   role: 0,
-  credits: "syntaxt0x1c",
-  description: "Generate a random TikTok video",
-  usages: "[]",
-  cooldown: 0,
-  hasPrefix: true
+  credits: "selov",
+  description: "Get random TikTok videos",
+  commandCategory: "video",
+  usages: "/shawty",
+  cooldowns: 5
 };
 
-module.exports.run = async ({ api, event, args }) => {
-  const { messageID, threadID } = event;
-  
-  // Set initial reaction and typing indicator
-  api.setMessageReaction("⏳", messageID, (err) => {}, true);
-  api.sendTypingIndicator(threadID, true);
+module.exports.run = async function ({ api, event, args }) {
+  const { threadID, messageID } = event;
 
   try {
-    // Fetch video details from the API
-    const response = await axios.get('https://oreo.gleeze.com/api/shawty?stream=false', {
-      timeout: 15000
-    });
+    // Send initial message
+    const waitingMsg = await api.sendMessage("🎬 Fetching random TikTok video...", threadID);
 
-    const data = response.data;
+    // Fetch video from API
+    const apiUrl = 'https://apiremake-production.up.railway.app/api/random/tiktok?apikey=fdv_99SxsNRprZzIiLxRu3JJlA';
     
-    // Validate API response
-    if (!data || !data.shotiurl) {
-      api.setMessageReaction("❌", messageID, (err) => {}, true);
-      return api.sendMessage("❌ No video found or invalid response from the API.", threadID, messageID);
+    const response = await axios.get(apiUrl, { timeout: 15000 });
+    
+    // Check if API returned successfully
+    if (!response.data || !response.data.success) {
+      throw new Error("API returned unsuccessful response");
     }
 
-    // Create cache directory if it doesn't exist
-    const cacheDir = path.join(__dirname, 'cache');
+    // Get video URL - OPTION 1: Direct stream URL
+    let videoUrl = response.data.url;
+    
+    // OPTION 2: If direct URL doesn't work, use meta.play
+    if (!videoUrl && response.data.meta && response.data.meta.play) {
+      videoUrl = response.data.meta.play;
+    }
+    
+    // OPTION 3: Try wmplay (watermarked version)
+    if (!videoUrl && response.data.meta && response.data.meta.wmplay) {
+      videoUrl = response.data.meta.wmplay;
+    }
+
+    if (!videoUrl) {
+      console.log("Full API response:", JSON.stringify(response.data, null, 2));
+      throw new Error("No video URL found in response");
+    }
+
+    // Get video info for display
+    const title = response.data.meta?.title || "TikTok Video";
+    const author = response.data.meta?.author?.nickname || "Unknown";
+    const duration = response.data.meta?.duration || "Unknown";
+    const playCount = formatNumber(response.data.meta?.play_count || 0);
+    const fileSize = response.data.meta?.size ? (response.data.meta.size / (1024 * 1024)).toFixed(2) + ' MB' : 'Unknown';
+
+    await api.editMessage(`📥 Downloading video...`, waitingMsg.messageID);
+
+    // Create cache directory
+    const cacheDir = path.join(__dirname, 'cache', 'shawty');
     await fs.ensureDir(cacheDir);
     
-    // Video file path
-    const videoPath = path.join(cacheDir, `shawty_${Date.now()}.mp4`);
-
-    // Download the video using axios (more reliable than request module)
-    const downloadResponse = await axios({
+    const filePath = path.join(cacheDir, `shawty_${Date.now()}.mp4`);
+    
+    // Download the video
+    const downloadStream = await axios({
       method: 'GET',
-      url: data.shotiurl,
+      url: videoUrl,
       responseType: 'stream',
       timeout: 60000,
       headers: {
@@ -52,8 +74,8 @@ module.exports.run = async ({ api, event, args }) => {
       }
     });
 
-    const writer = fs.createWriteStream(videoPath);
-    downloadResponse.data.pipe(writer);
+    const writer = fs.createWriteStream(filePath);
+    downloadStream.data.pipe(writer);
 
     // Wait for download to complete
     await new Promise((resolve, reject) => {
@@ -62,38 +84,33 @@ module.exports.run = async ({ api, event, args }) => {
     });
 
     // Verify file was downloaded
-    const stats = fs.statSync(videoPath);
+    const stats = fs.statSync(filePath);
     if (stats.size === 0) {
       throw new Error("Downloaded file is empty");
     }
 
-    // Update reaction to success
-    api.setMessageReaction("✅", messageID, (err) => {}, true);
+    // Delete waiting message
+    await api.unsendMessage(waitingMsg.messageID);
 
-    // Prepare video information message
-    const infoMessage = 
-      `🎬 **TikTok Video**\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `**Title:** ${data.title || 'Untitled'}\n` +
-      `**Username:** @${data.username || 'Unknown'}\n` +
-      `**Nickname:** ${data.nickname || 'Unknown'}\n` +
-      `**Duration:** ${data.duration || '?'} seconds\n` +
-      `**Region:** ${data.region || 'Unknown'}\n` +
-      `**Total Videos:** ${data.total_vids || 'N/A'}\n` +
-      `━━━━━━━━━━━━━━━━`;
-
-    // Send the video with information
+    // Send the video
     api.sendMessage({
-      body: infoMessage,
-      attachment: fs.createReadStream(videoPath)
+      body: `🎬 **TikTok Video**\n━━━━━━━━━━━━━━━━\n👤 **Author:** ${author}\n📝 **Title:** ${title}\n⏱️ **Duration:** ${duration}s\n👁️ **Plays:** ${playCount}\n📦 **Size:** ${fileSize}\n━━━━━━━━━━━━━━━━`,
+      attachment: fs.createReadStream(filePath)
     }, threadID, () => {
       // Clean up file after sending
-      fs.unlinkSync(videoPath);
+      fs.unlinkSync(filePath);
     }, messageID);
 
   } catch (err) {
-    console.error('Shawty command error:', err.message);
-    api.setMessageReaction("❌", messageID, (err) => {}, true);
+    console.error('Shawty error:', err.message);
+    console.error('Full error:', err);
     api.sendMessage(`❌ Error: ${err.message}`, threadID, messageID);
   }
 };
+
+// Helper function to format numbers
+function formatNumber(num) {
+  if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+  if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+  return num.toString();
+}
