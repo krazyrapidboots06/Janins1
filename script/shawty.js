@@ -2,9 +2,12 @@ const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
 
+const API_URL = 'https://oreo.gleeze.com/api/shawty';
+const API_KEY = '8bba3b09c3bba06c435701f3fba84f83d8e124be47c9a42e07002f4952d24f63';
+
 module.exports.config = {
   name: "shawty",
-  version: "1.0.0",
+  version: "2.0.0",
   role: 0,
   credits: "selov",
   description: "Get random TikTok videos",
@@ -20,25 +23,25 @@ module.exports.run = async function ({ api, event, args }) {
     // Send initial message
     const waitingMsg = await api.sendMessage("🎬 Fetching random TikTok video...", threadID);
 
-    // Fetch video from API
-    const apiUrl = 'https://apiremake-production.up.railway.app/api/random/tiktok?apikey=fdv_99SxsNRprZzIiLxRu3JJlA';
-    
-    const response = await axios.get(apiUrl, { timeout: 15000 });
-    
+    // Fetch random video from API
+    const response = await axios.get(`${API_URL}?stream=false&api_key=${API_KEY}`, {
+      timeout: 15000
+    });
+
     // Check if API returned successfully
     if (!response.data || !response.data.success) {
       throw new Error("API returned unsuccessful response");
     }
 
-    // Get video URL - OPTION 1: Direct stream URL
+    // Get video URL - try different possible locations
     let videoUrl = response.data.url;
     
-    // OPTION 2: If direct URL doesn't work, use meta.play
+    // If direct URL doesn't work, try meta.play
     if (!videoUrl && response.data.meta && response.data.meta.play) {
       videoUrl = response.data.meta.play;
     }
     
-    // OPTION 3: Try wmplay (watermarked version)
+    // Try wmplay as last resort
     if (!videoUrl && response.data.meta && response.data.meta.wmplay) {
       videoUrl = response.data.meta.wmplay;
     }
@@ -48,12 +51,13 @@ module.exports.run = async function ({ api, event, args }) {
       throw new Error("No video URL found in response");
     }
 
-    // Get video info for display
-    const title = response.data.meta?.title || "TikTok Video";
-    const author = response.data.meta?.author?.nickname || "Unknown";
-    const duration = response.data.meta?.duration || "Unknown";
-    const playCount = formatNumber(response.data.meta?.play_count || 0);
-    const fileSize = response.data.meta?.size ? (response.data.meta.size / (1024 * 1024)).toFixed(2) + ' MB' : 'Unknown';
+    // Get video metadata for display
+    const meta = response.data.meta || {};
+    const author = meta.author?.nickname || "Unknown";
+    const title = meta.title || "TikTok Video";
+    const duration = meta.duration || "?";
+    const playCount = formatNumber(meta.play_count || 0);
+    const fileSize = meta.size ? (meta.size / (1024 * 1024)).toFixed(2) + ' MB' : 'Unknown';
 
     await api.editMessage(`📥 Downloading video...`, waitingMsg.messageID);
 
@@ -70,7 +74,8 @@ module.exports.run = async function ({ api, event, args }) {
       responseType: 'stream',
       timeout: 60000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.tiktok.com/'
       }
     });
 
@@ -92,9 +97,20 @@ module.exports.run = async function ({ api, event, args }) {
     // Delete waiting message
     await api.unsendMessage(waitingMsg.messageID);
 
-    // Send the video
+    // Prepare video info message
+    const infoMsg = 
+      `🎬 **TikTok Video**\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `👤 **Author:** ${author}\n` +
+      `📝 **Title:** ${title}\n` +
+      `⏱️ **Duration:** ${duration}s\n` +
+      `👁️ **Plays:** ${playCount}\n` +
+      `📦 **Size:** ${fileSize}\n` +
+      `━━━━━━━━━━━━━━━━`;
+
+    // Send the video with info
     api.sendMessage({
-      body: `🎬 **TikTok Video**\n━━━━━━━━━━━━━━━━\n👤 **Author:** ${author}\n📝 **Title:** ${title}\n⏱️ **Duration:** ${duration}s\n👁️ **Plays:** ${playCount}\n📦 **Size:** ${fileSize}\n━━━━━━━━━━━━━━━━`,
+      body: infoMsg,
       attachment: fs.createReadStream(filePath)
     }, threadID, () => {
       // Clean up file after sending
@@ -110,6 +126,7 @@ module.exports.run = async function ({ api, event, args }) {
 
 // Helper function to format numbers
 function formatNumber(num) {
+  if (!num) return '0';
   if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
   if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
   return num.toString();
