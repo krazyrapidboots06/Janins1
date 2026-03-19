@@ -6,7 +6,7 @@ const moment = require("moment-timezone");
 module.exports.config = {
   name: "accept",
   version: "5.0.0",
-  role: 3, // Set to 0 but we'll override with UID check
+  role: 0, // Set to 0 but we'll override with UID check
   credits: "selov",
   description: "Auto accept all pending friend requests",
   commandCategory: "social",
