@@ -4,10 +4,10 @@ module.exports.config = {
   name: "gemini",
   version: "3.0.0",
   hasPermssion: 0,
-  credits: "Yasis",
+  credits: "s",
   description: "ask a question",
   commandCategory: "search",
-  usages: "gemini <ask a questions> made by yasis",
+  usages: "gemini <ask a questions> made by selov",
   cooldowns: 2
 };
 
@@ -36,7 +36,7 @@ module.exports.run = async function ({ api, event, args }) {
 
     if (!prompt) {
       return api.sendMessage(
-        "📌 Usage:\n• ai <ask a question>\n• yasis describe it",
+        "📌 Usage:\n• ai <ask a question>\n• selov describe it",
         threadID,
         messageID
       );
