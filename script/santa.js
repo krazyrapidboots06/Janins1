@@ -4,10 +4,10 @@ const path = require('path');
 
 module.exports.config = {
   name: "santa",
-  version: "8.0.0",
+  version: "9.0.0",
   role: 0,
   credits: "selov",
-  description: "Santa AI with voice response (TTS audio only)",
+  description: "Santa AI with deep male voice (TTS audio only)",
   commandCategory: "ai",
   usages: "/santa <question>",
   cooldowns: 5
@@ -18,7 +18,9 @@ const memory = {};
 
 // Santa character persona for AI
 const SANTA_PERSONA = `You are Santa Claus. You are jolly, kind, and speak with warmth and cheer. 
-You often laugh with "Ho ho ho!". You created or made by selov asx`;
+You often laugh with "Ho ho ho!" and spread Christmas spirit. 
+Keep your responses warm, cheerful, and festive. 
+Keep your answers short and friendly (under 150 characters).`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -101,60 +103,59 @@ module.exports.run = async function ({ api, event, args }) {
     const cacheDir = path.join(__dirname, "cache", "santa");
     await fs.ensureDir(cacheDir);
     
-    // Convert to speech
+    // Convert to speech - ONLY MALE VOICES
     const ttsText = encodeURIComponent(replyText);
-    
-    // Try different TTS APIs
     let audioData = null;
     
-    // Try StreamElements first (Adam - male voice)
-    try {
-      const adamUrl = `https://api.streamelements.com/kappa/v2/speech?voice=Adam&text=${ttsText}`;
-      const response = await axios.get(adamUrl, {
-        responseType: "arraybuffer",
-        timeout: 15000,
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
-      if (response.data && response.data.length > 1000) {
-        audioData = response.data;
+    // MALE VOICES ONLY - No female voices
+    const maleVoices = [
+      { name: "Adam", url: `https://api.streamelements.com/kappa/v2/speech?voice=Adam&text=${ttsText}` },
+      { name: "Brian", url: `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${ttsText}` },
+      { name: "Justin", url: `https://api.streamelements.com/kappa/v2/speech?voice=Justin&text=${ttsText}` },
+      { name: "Joey", url: `https://api.streamelements.com/kappa/v2/speech?voice=Joey&text=${ttsText}` }
+    ];
+    
+    for (const voice of maleVoices) {
+      try {
+        const response = await axios.get(voice.url, {
+          responseType: "arraybuffer",
+          timeout: 15000,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        });
+        
+        if (response.data && response.data.length > 1000) {
+          audioData = response.data;
+          console.log(`Using male voice: ${voice.name}`);
+          break;
+        }
+      } catch (e) {
+        console.log(`${voice.name} failed, trying next...`);
       }
-    } catch (e) {
-      console.log("Adam voice failed, trying Brian...");
     }
     
-    // Try Brian if Adam failed
+    // If all male voices fail, try VoiceRSS with male voice
     if (!audioData) {
+      const VOICE_RSS_KEY = "35bfa5b8240b40caa734948a13d0f2fe";
+      const maleVoiceUrl = `https://api.voicerss.org/?key=${VOICE_RSS_KEY}&hl=en-us&src=${ttsText}&c=MP3`;
+      
       try {
-        const brianUrl = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${ttsText}`;
-        const response = await axios.get(brianUrl, {
+        const response = await axios.get(maleVoiceUrl, {
           responseType: "arraybuffer",
           timeout: 15000,
           headers: { 'User-Agent': 'Mozilla/5.0' }
         });
+        
         if (response.data && response.data.length > 1000) {
           audioData = response.data;
+          console.log("Using VoiceRSS male voice");
         }
       } catch (e) {
-        console.log("Brian voice failed, trying Google...");
+        console.log("VoiceRSS failed");
       }
     }
     
-    // Fallback to Google TTS
-    if (!audioData) {
-      const googleUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${ttsText}`;
-      const response = await axios.get(googleUrl, {
-        responseType: "arraybuffer",
-        timeout: 15000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-          'Referer': 'http://translate.google.com/'
-        }
-      });
-      audioData = response.data;
-    }
-    
     if (!audioData || audioData.length < 1000) {
-      throw new Error("No TTS available");
+      throw new Error("No male voice available");
     }
     
     const audioPath = path.join(cacheDir, `santa_${Date.now()}.mp3`);
