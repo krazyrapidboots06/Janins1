@@ -4,7 +4,7 @@ const path = require('path');
 
 module.exports.config = {
   name: "santa",
-  version: "9.0.0",
+  version: "11.0.0",
   role: 0,
   credits: "selov",
   description: "Santa AI with deep male voice (TTS audio only)",
@@ -13,14 +13,16 @@ module.exports.config = {
   cooldowns: 5
 };
 
+// StreamElements JWT Token
+const STREAMELEMENTS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaXRhZGVsIiwiZXhwIjoxNzg5OTAyMDA4LCJqdGkiOiI3YzNjNDI3ZC1mMDdjLTRlNzItOGU1Ny0yMzU3OWQ5YzEwYWQiLCJjaGFubmVsIjoiNjljMjZlYjhmOTk0Y2JlNjE2NzUzZGRkIiwicm9sZSI6Im93bmVyIiwiYXV0aFRva2VuIjoickUzZFVvLVNsbkNJVXFiTXBCeTB1dEp1UXRZcURhdS12ck9YUHhWQmVoT0R0bXVLIiwidXNlciI6IjY5YzI2ZWI4Zjk5NGNiZTYxNjc1M2RkYyIsInVzZXJfaWQiOiI2MzlkM2YyNy02MjAzLTRmYWMtYTQ0ZC05MTYxODRiZTU1Y2YiLCJ1c2VyX3JvbGUiOiJjcmVhdG9yIiwicHJvdmlkZXIiOiJ5b3V0dWJlIiwicHJvdmlkZXJfaWQiOiJVQ2hhamMtSmRzNDk1d0UzQVdGVl80VUEiLCJjaGFubmVsX2lkIjoiODBiZGViN2EtOWNhZS00MmU0LWFjOWYtYzE3ZGY2MWFmOWZkIiwiY3JlYXRvcl9pZCI6IjU3OGQwYTU0LTYzOTktNGM0OS1iYjZmLTViMjNjZTQ4Mjc1MSJ9.8BjgvA3z8s4u9npwHt2T_CEQnQFjyhMqKeUyWIhmLzU";
+
 // Simple memory per thread
 const memory = {};
 
 // Santa character persona for AI
 const SANTA_PERSONA = `You are Santa Claus. You are jolly, kind, and speak with warmth and cheer. 
 You often laugh with "Ho ho ho!" and spread Christmas spirit. 
-Keep your responses warm, cheerful, and festive. 
-Keep your answers short and friendly (under 150 characters).`;
+Keep your responses warm, cheerful, and festive. You created by selov`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -103,58 +105,39 @@ module.exports.run = async function ({ api, event, args }) {
     const cacheDir = path.join(__dirname, "cache", "santa");
     await fs.ensureDir(cacheDir);
     
-    // Convert to speech - ONLY MALE VOICES
+    // Convert to speech using StreamElements with JWT token
     const ttsText = encodeURIComponent(replyText);
-    let audioData = null;
     
-    // MALE VOICES ONLY - No female voices
-    const maleVoices = [
-      { name: "Adam", url: `https://api.streamelements.com/kappa/v2/speech?voice=Adam&text=${ttsText}` },
-      { name: "Brian", url: `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${ttsText}` },
-      { name: "Justin", url: `https://api.streamelements.com/kappa/v2/speech?voice=Justin&text=${ttsText}` },
-      { name: "Joey", url: `https://api.streamelements.com/kappa/v2/speech?voice=Joey&text=${ttsText}` }
-    ];
+    // Try different male voices
+    const maleVoices = ['Adam', 'Brian', 'Justin', 'Joey'];
+    let audioData = null;
+    let usedVoice = null;
     
     for (const voice of maleVoices) {
       try {
-        const response = await axios.get(voice.url, {
+        const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=${voice}&text=${ttsText}`;
+        
+        const response = await axios.get(ttsUrl, {
           responseType: "arraybuffer",
           timeout: 15000,
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+          headers: {
+            'Authorization': `Bearer ${STREAMELEMENTS_TOKEN}`,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
         });
         
         if (response.data && response.data.length > 1000) {
           audioData = response.data;
-          console.log(`Using male voice: ${voice.name}`);
+          usedVoice = voice;
+          console.log(`Using male voice: ${voice}`);
           break;
         }
       } catch (e) {
-        console.log(`${voice.name} failed, trying next...`);
+        console.log(`${voice} voice failed: ${e.message}`);
       }
     }
     
-    // If all male voices fail, try VoiceRSS with male voice
     if (!audioData) {
-      const VOICE_RSS_KEY = "35bfa5b8240b40caa734948a13d0f2fe";
-      const maleVoiceUrl = `https://api.voicerss.org/?key=${VOICE_RSS_KEY}&hl=en-us&src=${ttsText}&c=MP3`;
-      
-      try {
-        const response = await axios.get(maleVoiceUrl, {
-          responseType: "arraybuffer",
-          timeout: 15000,
-          headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        
-        if (response.data && response.data.length > 1000) {
-          audioData = response.data;
-          console.log("Using VoiceRSS male voice");
-        }
-      } catch (e) {
-        console.log("VoiceRSS failed");
-      }
-    }
-    
-    if (!audioData || audioData.length < 1000) {
       throw new Error("No male voice available");
     }
     
