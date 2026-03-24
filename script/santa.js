@@ -2,9 +2,43 @@ const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
 
+// Auth token from Uint8Array
+const cidBytes = new Uint8Array([
+  0x24, 0x52, 0x43, 0x41, 0x6e, 0x6f, 0x6e, 0x79,
+  0x6d, 0x6f, 0x75, 0x73, 0x49, 0x44, 0x3a, 0x31,
+  0x33, 0x65, 0x38, 0x37, 0x35, 0x33, 0x61, 0x65,
+  0x36, 0x31, 0x39, 0x34, 0x63, 0x37, 0x62, 0x39,
+  0x32, 0x37, 0x33, 0x32, 0x64, 0x36, 0x36, 0x64,
+  0x37, 0x30, 0x32, 0x33, 0x30, 0x37, 0x32
+]);
+
+const authBytes = new Uint8Array([
+  0x77, 0x76, 0x65, 0x62, 0x6e, 0x79, 0x75, 0x36, 0x36, 0x36, 0x38, 0x37, 0x35, 0x36, 0x68, 0x34,
+  0x35, 0x67, 0x66, 0x65, 0x63, 0x64, 0x66, 0x65, 0x67, 0x6e, 0x68, 0x6d, 0x75, 0x36, 0x6b, 0x6a,
+  0x35, 0x68, 0x36, 0x34, 0x67, 0x35, 0x33, 0x66, 0x76, 0x72, 0x62, 0x67, 0x6e, 0x79, 0x35
+]);
+
+function decodeUint8Array(bytes) {
+  return new TextDecoder().decode(bytes);
+}
+
+const CUSTOMER_ID = decodeUint8Array(cidBytes);
+const AUTH_TOKEN = decodeUint8Array(authBytes);
+
+const API_CONFIG = {
+  baseUrl: 'https://svara.aculix.net',
+  endpoint: '/generate-speech',
+  headers: {
+    'user-agent': 'NB Android/1.0.0',
+    'accept-encoding': 'gzip',
+    'content-type': 'application/json',
+    'authorization': AUTH_TOKEN
+  }
+};
+
 module.exports.config = {
   name: "santa",
-  version: "1.0.0",
+  version: "2.0.0",
   role: 0,
   credits: "selov",
   description: "Santa AI voice response (TTS audio only)",
@@ -21,14 +55,7 @@ const SANTA_PERSONA = `You are Santa Claus. You are jolly, kind, and speak with 
 You often laugh with "Ho ho ho!" and spread Christmas spirit. 
 You know about children being naughty or nice, and you love giving gifts. 
 Keep your responses friendly, magical, and festive. 
-Address the user by their name if known. Your owner is selov asx.`;
-
-// Voice mapping
-const VOICES = {
-  santa: "santa",
-  santa_claus: "santa",
-  father_christmas: "santa"
-};
+Address the user by their name if known.`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -69,10 +96,9 @@ module.exports.run = async function ({ api, event, args }) {
     // Show typing indicator
     api.sendTypingIndicator(threadID, true);
     
-    // Enhanced prompt with Santa persona and user's name
+    // Get AI response from ChatGPT API
     const enhancedPrompt = `${SANTA_PERSONA}\n\nThe user's name is ${firstName} (full name: ${senderName}). Please address them by their name in your response naturally. Keep your response warm, cheerful, and festive. Question: ${prompt}`;
     
-    // Get AI response from Gemini API (or your preferred AI API)
     const aiUrl = `https://deku-rest-api-spring.onrender.com/chatgpt?prompt=${encodeURIComponent(enhancedPrompt)}`;
     const aiResponse = await axios.get(aiUrl, { timeout: 15000 });
     
@@ -93,7 +119,7 @@ module.exports.run = async function ({ api, event, args }) {
       }
     }
     
-    // Store conversation in memory
+    // Store conversation
     memory[threadID].conversations.push({
       user: senderID,
       userName: firstName,
@@ -102,44 +128,45 @@ module.exports.run = async function ({ api, event, args }) {
       timestamp: Date.now()
     });
     
-    // Keep only last 10 conversations
     if (memory[threadID].conversations.length > 10) {
       memory[threadID].conversations.shift();
     }
     
     // Create cache directory
     const cacheDir = path.join(__dirname, "cache", "santa");
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-    }
+    await fs.ensureDir(cacheDir);
     
     // Convert text to speech using Svara API with Santa voice
-    const ttsText = replyText.substring(0, 300); // Limit to 300 chars
+    const ttsText = replyText.substring(0, 300);
     
-    const ttsUrl = "https://rest-apins.vercel.app/api/ai/svara";
     const ttsPayload = {
       text: ttsText,
-      voice: "santa"
+      voice: "santa",
+      customerId: CUSTOMER_ID
     };
     
     const audioPath = path.join(cacheDir, `santa_${Date.now()}.mp3`);
     
-    const audioResponse = await axios.post(ttsUrl, ttsPayload, {
-      responseType: "arraybuffer",
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    // Make request to Svara API
+    const audioResponse = await axios.post(
+      `${API_CONFIG.baseUrl}${API_CONFIG.endpoint}`,
+      ttsPayload,
+      {
+        responseType: "arraybuffer",
+        timeout: 30000,
+        headers: API_CONFIG.headers
       }
-    });
+    );
     
     fs.writeFileSync(audioPath, audioResponse.data);
     
-    // Get file size
+    // Check file size
     const stats = fs.statSync(audioPath);
-    const fileSizeKB = (stats.size / 1024).toFixed(2);
+    if (stats.size === 0) {
+      throw new Error("Downloaded file is empty");
+    }
     
-    // Send ONLY audio - no text
+    // Send ONLY audio
     api.sendMessage({
       attachment: fs.createReadStream(audioPath)
     }, threadID, (err) => {
