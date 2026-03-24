@@ -3,13 +3,13 @@ const fs = require('fs-extra');
 const path = require('path');
 
 module.exports.config = {
-  name: "aitts",
+  name: "selov",
   version: "1.0.0",
   role: 0,
   credits: "selov",
   description: "AI with ElevenLabs voice response",
   commandCategory: "ai",
-  usages: "/aitts <question>",
+  usages: "/selov <question>",
   cooldowns: 5
 };
 
