@@ -3,7 +3,7 @@ const moment = require('moment-timezone');
 
 module.exports.config = {
   name: "biblesched",
-  version: "2.0.0",
+  version: "3.0.0",
   role: 2, // Admin only
   credits: "selov",
   description: "Auto Bible verses for ALL groups (humility, lust, Mark 6:66)",
@@ -15,7 +15,7 @@ module.exports.config = {
 // Store active schedules per thread
 const schedules = {};
 
-// Bible verses database (same as before)
+// Bible verses database
 const bibleVerses = {
   humility: [
     {
@@ -90,8 +90,8 @@ function scheduleMessages(api, threadID) {
   let morningDelay = morningTime.diff(moment.tz(tz));
   if (morningDelay < 0) morningDelay += 24 * 60 * 60 * 1000;
   
-  // Afternoon: 12:00 PM
-  const afternoonTime = moment.tz(tz).set({ hour: 12, minute: 0, second: 0 });
+  // Afternoon: 12:30 PM
+  const afternoonTime = moment.tz(tz).set({ hour: 12, minute: 15, second: 0 });
   let afternoonDelay = afternoonTime.diff(moment.tz(tz));
   if (afternoonDelay < 0) afternoonDelay += 24 * 60 * 60 * 1000;
   
@@ -180,7 +180,7 @@ module.exports.handleEvent = async function ({ api, event }) {
         try {
           const tz = 'Asia/Manila';
           const morning = moment.tz(tz).set({ hour: 6, minute: 0 }).format('hh:mm A');
-          const afternoon = moment.tz(tz).set({ hour: 12, minute: 0 }).format('hh:mm A');
+          const afternoon = moment.tz(tz).set({ hour: 12, minute: 15 }).format('hh:mm A');
           const evening = moment.tz(tz).set({ hour: 18, minute: 0 }).format('hh:mm A');
           
           await api.sendMessage(
@@ -221,7 +221,7 @@ module.exports.run = async function ({ api, event, args }) {
       
       const tz = 'Asia/Manila';
       const morning = moment.tz(tz).set({ hour: 6, minute: 0 }).format('hh:mm A');
-      const afternoon = moment.tz(tz).set({ hour: 12, minute: 0 }).format('hh:mm A');
+      const afternoon = moment.tz(tz).set({ hour: 12, minute: 15 }).format('hh:mm A');
       const evening = moment.tz(tz).set({ hour: 18, minute: 0 }).format('hh:mm A');
       
       return api.sendMessage(
@@ -247,7 +247,7 @@ module.exports.run = async function ({ api, event, args }) {
       if (schedules[threadID]?.active) {
         const tz = 'Asia/Manila';
         const morning = moment.tz(tz).set({ hour: 6, minute: 0 }).format('hh:mm A');
-        const afternoon = moment.tz(tz).set({ hour: 12, minute: 0 }).format('hh:mm A');
+        const afternoon = moment.tz(tz).set({ hour: 12, minute: 15 }).format('hh:mm A');
         const evening = moment.tz(tz).set({ hour: 18, minute: 0 }).format('hh:mm A');
         
         return api.sendMessage(
@@ -279,7 +279,7 @@ module.exports.run = async function ({ api, event, args }) {
         `• /biblesched status - Check current status\n\n` +
         `Schedule (Philippines Time):\n` +
         `🌅 6:00 AM - Humility\n` +
-        `☀️ 12:00 PM - Lust\n` +
+        `☀️ 12:30 PM - Lust\n` +
         `🌙 6:00 PM - Mark 6:66`,
         threadID,
         messageID
