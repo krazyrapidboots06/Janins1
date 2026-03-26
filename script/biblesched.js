@@ -3,10 +3,10 @@ const moment = require('moment-timezone');
 
 module.exports.config = {
   name: "biblesched",
-  version: "1.0.0",
+  version: "2.0.0",
   role: 2, // Admin only
   credits: "selov",
-  description: "Scheduled Bible messages (humility, lust, Mark 6:66) at morning, afternoon, evening",
+  description: "Auto Bible verses for ALL groups (humility, lust, Mark 6:66)",
   commandCategory: "religion",
   usages: "/biblesched on/off/status",
   cooldowns: 5
@@ -15,7 +15,7 @@ module.exports.config = {
 // Store active schedules per thread
 const schedules = {};
 
-// Bible verses database
+// Bible verses database (same as before)
 const bibleVerses = {
   humility: [
     {
@@ -113,11 +113,10 @@ function scheduleMessages(api, threadID) {
       const verse = getRandomVerse('humility');
       const message = formatMessage(verse, 'Humility');
       await api.sendMessage(message, threadID);
-      
       // Reschedule for next day
       scheduleMessages(api, threadID);
     } catch (err) {
-      console.error("Morning message error:", err);
+      console.error("Morning message error for thread", threadID, err);
     }
   }, morningDelay);
   
@@ -128,18 +127,18 @@ function scheduleMessages(api, threadID) {
       const message = formatMessage(verse, 'Lust');
       await api.sendMessage(message, threadID);
     } catch (err) {
-      console.error("Afternoon message error:", err);
+      console.error("Afternoon message error for thread", threadID, err);
     }
   }, afternoonDelay);
   
   // Evening schedule (Mark 6:66)
   const eveningSchedule = setTimeout(async () => {
     try {
-      const verse = getRandomVerse('mark')[0];
+      const verse = bibleVerses.mark[0];
       const message = formatMessage(verse, 'Mark 6:66');
       await api.sendMessage(message, threadID);
     } catch (err) {
-      console.error("Evening message error:", err);
+      console.error("Evening message error for thread", threadID, err);
     }
   }, eveningDelay);
   
@@ -162,13 +161,52 @@ function cancelSchedules(threadID) {
   }
 }
 
+// Auto-activate for ALL groups when bot joins
+module.exports.handleEvent = async function ({ api, event }) {
+  const { threadID, logMessageType } = event;
+  
+  // When bot joins a new group, auto-activate schedule
+  if (logMessageType === "log:subscribe") {
+    const addedParticipants = event.logMessageData?.addedParticipants || [];
+    const botID = api.getCurrentUserID();
+    
+    const botAdded = addedParticipants.some(p => p.userFbId === botID);
+    
+    if (botAdded && !schedules[threadID]?.active) {
+      console.log(`Bot added to group ${threadID}, activating Bible schedule...`);
+      scheduleMessages(api, threadID);
+      
+      setTimeout(async () => {
+        try {
+          const tz = 'Asia/Manila';
+          const morning = moment.tz(tz).set({ hour: 6, minute: 0 }).format('hh:mm A');
+          const afternoon = moment.tz(tz).set({ hour: 12, minute: 0 }).format('hh:mm A');
+          const evening = moment.tz(tz).set({ hour: 18, minute: 0 }).format('hh:mm A');
+          
+          await api.sendMessage(
+            `📖 Bible Schedule Activated\n━━━━━━━━━━━━━━━━\n` +
+            `🌅 Morning (${morning}): Humility\n` +
+            `☀️ Afternoon (${afternoon}): Lust\n` +
+            `🌙 Evening (${evening}): Mark 6:66\n` +
+            `━━━━━━━━━━━━━━━━\n` +
+            `Daily Bible verses will be sent at these times.`,
+            threadID
+          );
+        } catch (err) {
+          console.error("Welcome message error:", err);
+        }
+      }, 5000);
+    }
+  }
+};
+
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
   const command = args[0]?.toLowerCase();
   
   try {
-    // Get admin list (you can add your UIDs here)
-    const adminUIDs = ["61556388598622", "61552057602849"]; // Add your admin UIDs
+    // Admin UIDs for manual control
+    const adminUIDs = ["61556388598622", "61552057602849"];
     
     if (!adminUIDs.includes(senderID)) {
       return api.sendMessage("❌ This command is for admins only.", threadID, messageID);
@@ -203,7 +241,7 @@ module.exports.run = async function ({ api, event, args }) {
       }
       
       cancelSchedules(threadID);
-      return api.sendMessage("✅ Bible schedule has been turned off.", threadID, messageID);
+      return api.sendMessage("✅ Bible schedule has been turned off for this group.", threadID, messageID);
       
     } else if (command === "status") {
       if (schedules[threadID]?.active) {
