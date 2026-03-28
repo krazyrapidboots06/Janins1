@@ -85,21 +85,5 @@ module.exports.run = async function ({ api, event, args }) {
     
     await api.editMessage(resultMsg, waitingMsg.messageID);
     
-  } catch (err) {
-    console.error("MLBB Check Error:", err);
-    
-    let errorMsg = 
-      `❌ **MLBB Check Failed**\n━━━━━━━━━━━━━━━━\n` +
-      `📊 **User ID:** ${userId}\n` +
-      `🌍 **Zone ID:** ${zoneId}\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `🔴 **Error:** ${err.message}\n\n` +
-      `💡 **Possible reasons:**\n` +
-      `• Invalid User ID or Zone ID\n` +
-      `• Account does not exist\n` +
-      `• API service is temporarily down\n\n` +
-      `Try again later or check your IDs.`;
-    
-    await api.editMessage(errorMsg, waitingMsg.messageID);
-  }
+   }
 };
