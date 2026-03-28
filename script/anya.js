@@ -4,10 +4,10 @@ const path = require('path');
 
 module.exports.config = {
   name: "anya",
-  version: "4.0.0",
+  version: "6.0.0",
   role: 0,
-  credits: "selov",
-  description: "AI-powered Anya Forger voice TTS (text to speech)",
+  credits: "S1FU",
+  description: "AI-powered Anya Forger voice TTS (English voice)",
   commandCategory: "ai",
   usages: "/anya <question>",
   cooldowns: 5,
@@ -17,11 +17,12 @@ module.exports.config = {
 // Simple memory per thread
 const memory = {};
 
-// Anya character persona for AI
+// Anya character persona for AI (English)
 const ANYA_PERSONA = `You are Anya Forger from Spy x Family. You are a cute, innocent, and telepathic 6-year-old girl. 
 You love peanuts, Spy Wars, and helping your family. You often say "Waku waku!" when excited.
 Keep your responses short, cute, and childlike. Use simple words and be playful.
-Address the user by their name if known.`;
+Address the user by their name if known.
+Respond in ENGLISH only.`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -68,7 +69,7 @@ module.exports.run = async function ({ api, event, args }) {
     api.setMessageReaction("🥵", messageID, () => {}, true);
     
     // Get AI response using the API
-    const enhancedPrompt = `${ANYA_PERSONA}\n\nThe user's name is ${firstName}. Please address them by their name in your response. Keep it short and cute. Question: ${prompt}`;
+    const enhancedPrompt = `${ANYA_PERSONA}\n\nThe user's name is ${firstName}. Please address them by their name in your response. Keep it short and cute. Respond in ENGLISH only. Question: ${prompt}`;
     
     const aiUrl = `https://restapi-ratx.onrender.com/api/jay?prompt=${encodeURIComponent(enhancedPrompt)}&uid=${senderID}`;
     const aiResponse = await axios.get(aiUrl, { timeout: 20000 });
@@ -112,9 +113,12 @@ module.exports.run = async function ({ api, event, args }) {
     const cacheDir = path.join(__dirname, "cache", "anya");
     await fs.ensureDir(cacheDir);
     
-    // Convert text to speech using Anya voice (VoiceVox speaker 3)
+    // Convert text to speech using your original API (VoiceVox) with ENGLISH voice
+    // Speaker 1 = English speaker (VoiceVox has English support)
     const ttsText = encodeURIComponent(replyText);
-    const ttsUrl = `https://api.tts.quest/v3/voicevox/synthesis?text=${ttsText}&speaker=3`;
+    const ttsUrl = `https://api.tts.quest/v3/voicevox/synthesis?text=${ttsText}&speaker=1`;
+    
+    const filePath = path.join(cacheDir, `anya_${senderID}_${Date.now()}.mp3`);
     
     const ttsResponse = await axios.get(ttsUrl, { timeout: 20000 });
     
@@ -123,7 +127,6 @@ module.exports.run = async function ({ api, event, args }) {
     }
     
     const audioUrl = ttsResponse.data.mp3StreamingUrl;
-    const filePath = path.join(cacheDir, `anya_${senderID}_${Date.now()}.mp3`);
     
     const audioResponse = await axios.get(audioUrl, {
       responseType: "arraybuffer",
@@ -134,6 +137,12 @@ module.exports.run = async function ({ api, event, args }) {
     });
     
     fs.writeFileSync(filePath, Buffer.from(audioResponse.data));
+    
+    // Check file size
+    const stats = fs.statSync(filePath);
+    if (stats.size === 0) {
+      throw new Error("Downloaded file is empty");
+    }
     
     // Send audio with info
     const successMsg = 
