@@ -19,9 +19,9 @@ module.exports.run = async function ({ api, event, args }) {
   
   if (!userId || !zoneId) {
     return api.sendMessage(
-      "🎮 **MLBB ACCOUNT CHECKER**\n━━━━━━━━━━━━━━━━\n" +
+      "🎮 MLBB ACCOUNT CHECKER\n━━━━━━━━━━━━━━━━\n" +
       "Usage: /mlcheck <userid> <zoneid>\n\n" +
-      "Example: /mlcheck 2002113712 19417\n\n" +
+      "Example: /mlcheck 997476984 10978\n\n" +
       "Find your User ID and Zone ID in your MLBB profile.",
       threadID,
       messageID
@@ -36,54 +36,87 @@ module.exports.run = async function ({ api, event, args }) {
   const waitingMsg = await api.sendMessage(`🔍 Checking account: ${userId} (Zone ${zoneId})...`, threadID);
   
   try {
-    // Try PuruBoy API first
-    let response;
+    // Try PuruBoy API
+    let response = null;
+    let data = null;
+    
     try {
       response = await axios.post('https://puruboy-api.vercel.app/api/tools/mlbb', {
         userId: userId,
         zoneId: zoneId
       }, {
-        timeout: 10000,
+        timeout: 15000,
         headers: { 'Content-Type': 'application/json' }
       });
-    } catch (puruError) {
-      console.log("PuruBoy API failed, trying alternative...");
-      
-      // Alternative API if PuruBoy fails
+      data = response.data;
+    } catch (err) {
+      console.log("PuruBoy API failed:", err.message);
+    }
+    
+    // Alternative API if first fails
+    if (!data || !data.success) {
       try {
         const altResponse = await axios.get(`https://api.diioffc.web.id/api/mlbb/${userId}/${zoneId}`, {
           timeout: 10000
         });
-        response = { data: altResponse.data };
-      } catch (altError) {
-        throw new Error("All APIs are currently unavailable");
+        data = altResponse.data;
+      } catch (err) {
+        console.log("Alternative API failed:", err.message);
       }
     }
     
-    const data = response.data;
-    
-    // Check different response formats
-    if (!data.success && !data.status) {
-      throw new Error(data.message || "Account not found");
+    if (!data) {
+      throw new Error("All APIs failed");
     }
     
     // Extract result from different response structures
-    const result = data.result || data.data || data;
+    let result = data.result || data.data || data.player || data;
     
+    // Get values
+    const nickname = result.nickname || result.name || result.username || result.player_name || "N/A";
+    const region = result.region || result.country || result.location || "N/A";
+    const lastLogin = result.lastLogin || result.last_login || result.last_active || result.lastSeen || "N/A";
+    const createdAt = result.createdAt || result.created_at || result.join_date || result.created || "N/A";
+    
+    // Check if account exists
+    if (nickname === "N/A" && region === "N/A" && lastLogin === "N/A" && createdAt === "N/A") {
+      throw new Error("Account not found");
+    }
+    
+    // Format the response - NO "Checked by" line
     const resultMsg = 
-      `🎮 **MLBB ACCOUNT DETAILS**\n` +
+      `🎮 MLBB ACCOUNT DETAILS\n` +
       `━━━━━━━━━━━━━━━━\n` +
-      `📊 **User ID:** ${userId}\n` +
-      `🌍 **Zone ID:** ${zoneId}\n` +
+      `📊 User ID: ${userId}\n` +
+      `🌍 Zone ID: ${zoneId}\n` +
       `━━━━━━━━━━━━━━━━\n` +
-      `👤 **Nickname:** ${result.nickname || result.username || result.name || 'N/A'}\n` +
-      `🌏 **Region:** ${result.region || result.country || 'N/A'}\n` +
-      `📅 **Last Login:** ${result.lastLogin || result.last_active || 'N/A'}\n` +
-      `🕐 **Created:** ${result.createdAt || result.created_at || 'N/A'}\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `🔍 Checked by: Selov`;
+      `👤 Nickname: ${nickname}\n` +
+      `🌏 Region: ${region}\n` +
+      `📅 Last Login: ${lastLogin}\n` +
+      `🕐 Created: ${createdAt}`;
     
     await api.editMessage(resultMsg, waitingMsg.messageID);
     
-   }
+  } catch (err) {
+    console.error("MLBB Check Error:", err);
+    
+    let errorMsg = 
+      `❌ MLBB Check Failed\n━━━━━━━━━━━━━━━━\n` +
+      `📊 User ID: ${userId}\n` +
+      `🌍 Zone ID: ${zoneId}\n` +
+      `━━━━━━━━━━━━━━━━\n`;
+    
+    if (err.message === "Account not found") {
+      errorMsg += `🔴 Account not found\n\n` +
+                  `💡 Possible reasons:\n` +
+                  `• Invalid User ID or Zone ID\n` +
+                  `• Account does not exist`;
+    } else {
+      errorMsg += `🔴 Error* ${err.message}\n\n` +
+                  `💡 API service may be temporarily down.\n` +
+                  `Please try again later.`;
+    }
+    
+    await api.editMessage(errorMsg, waitingMsg.messageID);
+  }
 };
