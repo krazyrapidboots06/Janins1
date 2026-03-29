@@ -1,34 +1,23 @@
 const axios = require('axios');
 
 module.exports.config = {
-  name: "gpt",
-  version: "1.0.0",
+  name: "biblegpt",
+  version: "2.0.0",
   role: 0,
   credits: "selov",
-  description: "AI-powered Bible study assistant (BibleGPT)",
+  description: "AI-powered Bible study assistant",
   commandCategory: "religion",
-  usages: "/gpt <question>",
+  usages: "/biblegpt <question>",
   cooldowns: 3,
-  aliases: ["biblegpt", "bibleask"]
+  aliases: ["bibleai", "bibleask"]
 };
 
 // Store user conversation history
 if (!global.bibleAIUsers) global.bibleAIUsers = {};
 
-// Bible context for the AI
-const BIBLE_SYSTEM_PROMPT = `You are BibleGPT, an AI-powered tool that delivers accurate Bible-based answers to user queries. 
-Your purpose is to help people deepen their understanding of the Bible, theology, and Christian living.
-
-Guidelines:
-- Base your answers on Scripture, citing chapter and verse whenever possible
-- Provide biblical context and explanations
-- Be respectful, compassionate, and faithful to Christian teachings
-- If asked about controversial topics, present biblical perspectives with grace
-- If you don't know something, admit it honestly
-- Keep responses warm, encouraging, and helpful
-- Focus on accuracy and truthfulness
-
-Respond in a friendly, pastoral tone.`;
+// Bible context for the AI - helps guide responses
+const BIBLE_CONTEXT = `You are BibleGPT, an AI assistant focused on answering questions about the Bible, theology, and Christian living. 
+Base your answers on Scripture. Keep responses helpful, accurate, and respectful.`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -36,7 +25,12 @@ module.exports.run = async function ({ api, event, args }) {
 
   if (!userQuestion) {
     return api.sendMessage(
-      `📖 Ask me anything`,
+      `📖 BibleGPT\n━━━━━━━━━━━━━━━━\n` +
+      `Ask me anything about the Bible!\n\n` +
+      `Examples:\n` +
+      `• /biblegpt What does the Bible say about love?\n` +
+      `• /biblegpt Explain John 3:16\n` +
+      `• /biblegpt How can I grow in faith?`,
       threadID,
       messageID
     );
@@ -46,60 +40,26 @@ module.exports.run = async function ({ api, event, args }) {
   if (!global.bibleAIUsers[senderID]) {
     global.bibleAIUsers[senderID] = {
       history: [],
-      lastQuestion: null,
-      preferences: {}
+      lastQuestion: null
     };
   }
 
-  // Get user info for personalization
-  let userName = "Beloved";
   try {
-    const userInfo = await api.getUserInfo(senderID);
-    userName = userInfo[senderID]?.name?.split(' ')[0] || "Beloved";
-  } catch (e) {}
-
-  try {
-    // Build conversation history (last 5 exchanges for context)
-    const recentHistory = global.bibleAIUsers[senderID].history.slice(-5);
+    // Call the Vern REST API with the prompt
+    const enhancedPrompt = `${BIBLE_CONTEXT}\n\nUser question: ${userQuestion}\n\nProvide a helpful, Bible-based response.`;
     
-    // Prepare messages array for API
-    const messages = [
-      { role: "system", content: BIBLE_SYSTEM_PROMPT }
-    ];
-    
-    // Add conversation history
-    for (const entry of recentHistory) {
-      messages.push({ role: "user", content: entry.question });
-      messages.push({ role: "assistant", content: entry.answer });
-    }
-    
-    // Add current question with user's name
-    messages.push({ 
-      role: "user", 
-      content: `My name is ${userName}. ${userQuestion}` 
-    });
-
-    // Call Pollinations AI API
-    const response = await axios.post(
-      "https://text.pollinations.ai/openai",
-      {
-        model: "openai",
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 800,
-        seed: 42
-      },
-      {
-        timeout: 60000,
-        headers: { "Content-Type": "application/json" }
-      }
+    const response = await axios.get(
+      `https://vern-rest-api.vercel.app/api/chatgpt4?prompt=${encodeURIComponent(enhancedPrompt)}`,
+      { timeout: 30000 }
     );
 
-    let answer = response.data?.choices?.[0]?.message?.content || 
+    let answer = response.data?.result || 
+                 response.data?.response || 
                  response.data?.message || 
+                 response.data?.answer ||
                  "I'm sorry, I couldn't generate a response. Please try again.";
 
-    // Clean up the answer (remove any markdown artifacts)
+    // Clean up the answer
     answer = answer.replace(/```/g, '').trim();
 
     // Store conversation in memory
@@ -114,11 +74,20 @@ module.exports.run = async function ({ api, event, args }) {
       global.bibleAIUsers[senderID].history.shift();
     }
 
-    // ✅ FIXED: Send ONLY the answer
+    // Send ONLY the answer
     return api.sendMessage(answer, threadID, messageID);
 
   } catch (err) {
     console.error("BibleGPT Error:", err);
-    return api.sendMessage("❌ Sorry, I couldn't generate a response. Please try again.", threadID, messageID);
+    
+    let errorMsg = "❌ Sorry, I couldn't generate a response. Please try again.";
+    
+    if (err.response?.status === 400) {
+      errorMsg = "❌ Invalid request. Please try a different question.";
+    } else if (err.code === 'ECONNABORTED') {
+      errorMsg = "❌ Request timed out. Please try again.";
+    }
+    
+    return api.sendMessage(errorMsg, threadID, messageID);
   }
 };
