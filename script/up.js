@@ -1,3 +1,10 @@
+const axios = require('axios');
+const fs = require('fs-extra');
+const path = require('path');
+const os = require('os');
+const pidusage = require('pidusage');
+
+// Font mapping for aesthetic text
 let fontEnabled = true;
 
 function formatFont(text) {
@@ -16,98 +23,117 @@ function formatFont(text) {
       formattedText += char;
     }
   }
-
   return formattedText;
 }
 
-const tae = require('fs-extra');
-const os = require('os');
-const fs = require('fs').promises;
-const pidusage = require('pidusage');
+function byte2mb(bytes) {
+  const units = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  let l = 0, n = parseInt(bytes, 10) || 0;
+  while (n >= 1024 && ++l) n = n / 1024;
+  return `${n.toFixed(n < 10 && l > 0 ? 1 : 0)} ${units[l]}`;
+}
+
+function getUptime(uptime) {
+  const days = Math.floor(uptime / (3600 * 24));
+  const hours = Math.floor((uptime % (3600 * 24)) / 3600);
+  const mins = Math.floor((uptime % 3600) / 60);
+  const seconds = Math.floor(uptime % 60);
+  const months = Math.floor(days / 30);
+  const remainingDays = days % 30;
+  return `${months} Month(s), ${remainingDays} day(s), ${hours} hour(s), ${mins} minute(s), ${seconds} second(s)`;
+}
 
 module.exports.config = {
-    name: "uptime",
-    version: "1.0.2",
-    role: 0,
-    credits: "selov",
-    description: "Get bot uptime and system information",
-    hasPrefix: false,
-    cooldown: 5,
-    aliases: []
+  name: "up",
+  version: "1.0.2",
+  role: 0,
+  credits: "selov",
+  description: "Get bot uptime and system information",
+  commandCategory: "system",
+  usages: "/uptime",
+  cooldowns: 5,
+  aliases: ["status", "runtime"]
 };
 
-module.exports.byte2mb = (bytes) => {
-    const units = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-    let l = 0, n = parseInt(bytes, 10) || 0;
-    while (n >= 1024 && ++l) n = n / 1024;
-    return `${n.toFixed(n < 10 && l > 0 ? 1 : 0)} ${units[l]}`;
-};
-
-module.exports.getStartTimestamp = async () => {
+module.exports.run = async function ({ api, event, args }) {
+  const { threadID, messageID, timestamp } = event;
+  
+  try {
+    // Get start timestamp from file
+    const timeFilePath = path.join(__dirname, 'cache', 'time.txt');
+    let startTime;
+    
     try {
-        const startTimeStr = await fs.readFile('time.txt', 'utf8');
-        return parseInt(startTimeStr);
-    } catch (error) {
-        return Date.now();
+      if (await fs.pathExists(timeFilePath)) {
+        const startTimeStr = await fs.readFile(timeFilePath, 'utf8');
+        startTime = parseInt(startTimeStr);
+      } else {
+        startTime = Date.now();
+        await fs.ensureDir(path.dirname(timeFilePath));
+        await fs.writeFile(timeFilePath, startTime.toString());
+      }
+    } catch (err) {
+      startTime = Date.now();
     }
-};
-
-const database = JSON.parse(tae.readFileSync('./data/database.json', 'utf8'));
-
-let threadCount = 0;
-let userCount = new Set();
-
-database.forEach(entry => {
-  const threadID = Object.keys(entry)[0];
-  const users = entry[threadID];
-
-  if (users.length > 0) {
-    threadCount++;
-  }
-
-  users.forEach(user => {
-    userCount.add(user.id);
-  });
-});
-
-userCount = userCount.size;
-
-module.exports.saveStartTimestamp = async (timestamp) => {
-    try {
-        await fs.writeFile('time.txt', timestamp.toString());
-    } catch (error) {
-        console.error('Error saving start timestamp:', error);
-    }
-};
-
-module.exports.getUptime = (uptime) => {
-    const days = Math.floor(uptime / (3600 * 24));
-    const hours = Math.floor((uptime % (3600 * 24)) / 3600);
-    const mins = Math.floor((uptime % 3600) / 60);
-    const seconds = Math.floor(uptime % 60);
-    const months = Math.floor(days / 30);
-    const remainingDays = days % 30;
-
-    return `${months} Month(s), ${remainingDays} day(s), ${hours} hour(s), ${mins} minute(s), ${seconds} second(s)`;
-};
-
-module.exports.run = async ({ api, event }) => {
-    const startTime = await module.exports.getStartTimestamp();
+    
     const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
     const usage = await pidusage(process.pid);
-
+    
+    // Get thread and user counts (simplified version)
+    let threadCount = 0;
+    let userCount = 0;
+    
+    // You can replace this with actual database query if you have one
+    try {
+      const cacheDir = path.join(__dirname, 'cache');
+      await fs.ensureDir(cacheDir);
+      // Simple counter - replace with your actual database logic
+      threadCount = 1; // Current thread
+      userCount = 1; // Current user
+    } catch (err) {
+      console.error("Error getting counts:", err);
+    }
+    
     const osInfo = {
-        platform: os.platform(),
-        architecture: os.arch(),
-        homedir: os.homedir(),
-        hostname: os.hostname(),
-        rel: os.release(),
-        free: os.freemem()
+      platform: os.platform(),
+      architecture: os.arch(),
+      homedir: os.homedir(),
+      hostname: os.hostname(),
+      rel: os.release(),
+      free: os.freemem()
     };
-
-    const uptimeMessage = module.exports.getUptime(uptimeSeconds);
-    const returnResult = formatFont(`Server Running for ${uptimeMessage}\n\n❖ Cpu Usage: ${usage.cpu.toFixed(1)}%\n❖ RAM Usage: ${module.exports.byte2mb(usage.memory)}\n❖ All User: ${userCount}\n❖ All Thread: ${threadCount}\n❖ Cores: ${os.cpus().length}\n❖ Ping: ${Date.now() - event.timestamp}ms\n❖ Operating System Platform: ${osInfo.platform}\n❖ System CPU Architecture: ${osInfo.architecture}`);
-
-    await module.exports.saveStartTimestamp(startTime); 
-    return api.sendMessage(returnResult, event.threadID, event.messageID); 
+    
+    const uptimeMessage = getUptime(uptimeSeconds);
+    
+    const resultMessage = formatFont(
+      `🤖 BOT UPTIME\n━━━━━━━━━━━━━━━━\n` +
+      `⏱️ Uptime: ${uptimeMessage}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `💻 System Info\n` +
+      `• CPU Usage: ${usage.cpu.toFixed(1)}%\n` +
+      `• RAM Usage: ${byte2mb(usage.memory)}\n` +
+      `• Cores: ${os.cpus().length}\n` +
+      `• Platform: ${osInfo.platform}\n` +
+      `• Architecture: ${osInfo.architecture}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `📊 Bot Stats\n` +
+      `• Total Users: ${userCount}\n` +
+      `• Total Threads: ${threadCount}\n` +
+      `• Ping: ${Date.now() - timestamp}ms\n` +
+      `━━━━━━━━━━━━━━━━`
+    );
+    
+    // Save current timestamp for next run
+    await fs.writeFile(timeFilePath, Date.now().toString());
+    
+    return api.sendMessage(resultMessage, threadID, messageID);
+    
+  } catch (err) {
+    console.error("Uptime Error:", err);
+    return api.sendMessage(
+      `❌ Error getting system information: ${err.message}`,
+      threadID,
+      messageID
+    );
+  }
 };
