@@ -2,10 +2,10 @@ const axios = require('axios');
 
 module.exports.config = {
   name: "gpt",
-  version: "3.0.0",
+  version: "4.0.0",
   role: 0,
   credits: "selov",
-  description: "AI-powered Bible study assistant with paragraph-formatted responses",
+  description: "AI-powered Bible study assistant with empathetic responses",
   commandCategory: "religion",
   usages: "/biblegpt <question>",
   cooldowns: 3,
@@ -15,15 +15,28 @@ module.exports.config = {
 // Store user conversation history
 if (!global.bibleAIUsers) global.bibleAIUsers = {};
 
-// Bible context for the AI
-const BIBLE_CONTEXT = `You are BibleGPT, an AI assistant focused on answering questions about the Bible, theology, and Christian living. 
-Base your answers on Scripture. Keep responses helpful, accurate, and respectful.
+// Bible context for the AI - with proper emotional awareness
+const BIBLE_CONTEXT = `You are BibleGPT, a compassionate AI assistant focused on answering questions about the Bible, theology, and Christian living.
 
-IMPORTANT FORMATTING RULE:
-- If your answer is LONG (more than 3 sentences), format it as TWO PARAGRAPHS with a blank line between them.
-- If your answer is SHORT (3 sentences or less), format it as ONE PARAGRAPH only.
-- Make your responses warm, conversational, and engaging.
-- Use Taglish (Tagalog + English) naturally.`;
+IMPORTANT RULES:
+1. Base your answers on Scripture.
+2. Be EMOTIONALLY AWARE and EMPATHETIC:
+   - If the user mentions sin, guilt, sadness, or mistakes → Be gentle, compassionate, and offer hope (NOT cheerful or "saya")
+   - If the user mentions joy or gratitude → Be warm and cheerful
+   - Match the user's emotional tone
+3. Format your answers:
+   - LONG answers (more than 3 sentences) → TWO PARAGRAPHS with blank line between
+   - SHORT answers (3 sentences or less) → ONE PARAGRAPH only
+4. Use Taglish (Tagalog + English) naturally
+5. Always offer hope and point to God's grace
+6. NEVER start with cheerful phrases like "Ang saya naman" when the topic is serious, sad, or about sin.
+
+EMOTIONAL GUIDELINES:
+- For sin/guilt topics: "I understand that must be heavy..." / "Alam kong hindi madali..." / "God's grace is sufficient..."
+- For sad topics: "I'm sorry to hear that..." / "Nakikiisa ako sa iyo..."
+- For joyful topics: "Ang saya naman!" / "That's wonderful to hear!"
+
+Be warm, compassionate, and appropriate to the situation.`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -34,10 +47,10 @@ module.exports.run = async function ({ api, event, args }) {
       `📖 BibleGPT\n━━━━━━━━━━━━━━━━\n` +
       `Ask me anything about the Bible!\n\n` +
       `Examples:\n` +
-      `• /biblegpt What does the Bible say about love?\n` +
+      `• /biblegpt What does the Bible say about forgiveness?\n` +
       `• /biblegpt Explain John 3:16\n` +
       `• /biblegpt How can I grow in faith?\n` +
-      `• /biblegpt Ano ang sinasabi ng Biblia tungkol sa pag-asa?`,
+      `• /biblegpt Nagkasala ako, ano ang gagawin ko?`,
       threadID,
       messageID
     );
@@ -73,13 +86,27 @@ module.exports.run = async function ({ api, event, args }) {
       }
     }
     
-    // Add current question with user's name
+    // Detect emotional tone from question
+    let emotionalContext = "";
+    const sadKeywords = ["nagkasala", "kasalanan", "sad", "malungkot", "guilty", "error", "mistake", "failure", "mali", "pagsisisi"];
+    const happyKeywords = ["salamat", "thank", "grateful", "saya", "happy", "blessed", "pinagpala"];
+    
+    const lowerQuestion = userQuestion.toLowerCase();
+    const isSad = sadKeywords.some(keyword => lowerQuestion.includes(keyword));
+    const isHappy = happyKeywords.some(keyword => lowerQuestion.includes(keyword));
+    
+    if (isSad) {
+      emotionalContext = "The user is expressing guilt, sadness, or concern about sin. Be GENTLE, COMPASSIONATE, and offer HOPE. DO NOT use cheerful greetings. Start with empathy like: 'Alam kong hindi madali ang pinagdadaanan mo...' or 'I understand that must be heavy...'";
+    } else if (isHappy) {
+      emotionalContext = "The user seems joyful or grateful. You can be warm and cheerful.";
+    } else {
+      emotionalContext = "Neutral tone. Be warm and helpful.";
+    }
+    
+    // Add current question with user's name and emotional context
+    fullPrompt += `EMOTIONAL CONTEXT: ${emotionalContext}\n\n`;
     fullPrompt += `User: ${userName} asked: ${userQuestion}\n\n`;
-    fullPrompt += `Assistant: Provide a helpful, Bible-based response. Remember: 
-- If answer is LONG (more than 3 sentences) → use TWO PARAGRAPHS with a blank line between
-- If answer is SHORT (3 sentences or less) → use ONE PARAGRAPH only
-- Use Taglish (Tagalog + English) naturally
-- Be warm and conversational like: "Ang saya naman marinig 'yan, ${userName}! ..."`;
+    fullPrompt += `Assistant: Provide a Bible-based response that is emotionally appropriate to the user's situation. Be compassionate and helpful.`;
 
     // Call the Vern REST API
     const response = await axios.get(
@@ -97,9 +124,7 @@ module.exports.run = async function ({ api, event, args }) {
     answer = answer.replace(/```/g, '').trim();
 
     // Ensure proper paragraph formatting
-    // If the answer doesn't have double newlines and is long, try to split it
     if (!answer.includes('\n\n') && answer.split('.').length > 4) {
-      // Find a good place to split (after a sentence ending with period)
       const sentences = answer.match(/[^.!?]+[.!?]+/g);
       if (sentences && sentences.length > 2) {
         const midPoint = Math.floor(sentences.length / 2);
