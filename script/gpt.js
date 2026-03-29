@@ -2,14 +2,14 @@ const axios = require('axios');
 
 module.exports.config = {
   name: "gpt",
-  version: "4.0.0",
+  version: "5.0.0",
   role: 0,
   credits: "selov",
   description: "AI-powered Bible study assistant with empathetic responses",
   commandCategory: "religion",
-  usages: "/biblegpt <question>",
+  usages: "/gpt <question>",
   cooldowns: 3,
-  aliases: ["bibleai", "bibleask"]
+  aliases: ["gptai", "ask"]
 };
 
 // Store user conversation history
@@ -21,22 +21,23 @@ const BIBLE_CONTEXT = `You are BibleGPT, a compassionate AI assistant focused on
 IMPORTANT RULES:
 1. Base your answers on Scripture.
 2. Be EMOTIONALLY AWARE and EMPATHETIC:
-   - If the user mentions sin, guilt, sadness, or mistakes → Be gentle, compassionate, and offer hope (NOT cheerful or "saya")
-   - If the user mentions joy or gratitude → Be warm and cheerful
+   - If the user mentions sin, guilt, sadness, or mistakes → Be gentle, compassionate, and offer hope (DO NOT use cheerful greetings like "Ang saya naman")
+   - If the user mentions joy or gratitude → Be warm and cheerful (can use "Ang saya naman" or similar)
    - Match the user's emotional tone
-3. Format your answers:
-   - LONG answers (more than 3 sentences) → TWO PARAGRAPHS with blank line between
-   - SHORT answers (3 sentences or less) → ONE PARAGRAPH only
+3. FORMATTING RULES (CRITICAL):
+   - If your answer is LONG (more than 3 sentences) → Format as TWO PARAGRAPHS with a blank line between them
+   - If your answer is SHORT (3 sentences or less) → Format as ONE PARAGRAPH only
+   - Example of two paragraphs:
+     "First paragraph content here.
+     
+     Second paragraph content here."
 4. Use Taglish (Tagalog + English) naturally
 5. Always offer hope and point to God's grace
-6. NEVER start with cheerful phrases like "Ang saya naman" when the topic is serious, sad, or about sin.
 
 EMOTIONAL GUIDELINES:
-- For sin/guilt topics: "I understand that must be heavy..." / "Alam kong hindi madali..." / "God's grace is sufficient..."
+- For sin/guilt topics: "Alam kong hindi madali..." / "Naiintindihan ko ang bigat na nadarama mo..." / "God's grace is sufficient..."
 - For sad topics: "I'm sorry to hear that..." / "Nakikiisa ako sa iyo..."
-- For joyful topics: "Ang saya naman!" / "That's wonderful to hear!"
-
-Be warm, compassionate, and appropriate to the situation.`;
+- For joyful topics: "Ang saya naman!" / "That's wonderful to hear!"`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -72,6 +73,23 @@ module.exports.run = async function ({ api, event, args }) {
   } catch (e) {}
 
   try {
+    // Detect emotional tone from question
+    let emotionalContext = "";
+    const sadKeywords = ["nagkasala", "kasalanan", "sad", "malungkot", "guilty", "error", "mistake", "failure", "mali", "pagsisisi", "kasalanan", "sorry", "patawad"];
+    const happyKeywords = ["salamat", "thank", "grateful", "saya", "happy", "blessed", "pinagpala", "maganda", "masaya"];
+    
+    const lowerQuestion = userQuestion.toLowerCase();
+    const isSad = sadKeywords.some(keyword => lowerQuestion.includes(keyword));
+    const isHappy = happyKeywords.some(keyword => lowerQuestion.includes(keyword));
+    
+    if (isSad) {
+      emotionalContext = "The user is expressing guilt, sadness, or concern about sin. Be GENTLE, COMPASSIONATE, and offer HOPE. DO NOT use cheerful greetings like 'Ang saya naman'. Start with empathy like: 'Alam kong hindi madali ang pinagdadaanan mo...' or 'Naiintindihan ko ang bigat na nadarama mo...'";
+    } else if (isHappy) {
+      emotionalContext = "The user seems joyful or grateful. You can be warm and cheerful. You may use greetings like 'Ang saya naman!'";
+    } else {
+      emotionalContext = "Neutral tone. Be warm and helpful. Do not use overly cheerful greetings unless the user seems happy.";
+    }
+    
     // Add conversation history for context
     const recentHistory = global.bibleAIUsers[senderID].history.slice(-3);
     
@@ -86,27 +104,10 @@ module.exports.run = async function ({ api, event, args }) {
       }
     }
     
-    // Detect emotional tone from question
-    let emotionalContext = "";
-    const sadKeywords = ["nagkasala", "kasalanan", "sad", "malungkot", "guilty", "error", "mistake", "failure", "mali", "pagsisisi"];
-    const happyKeywords = ["salamat", "thank", "grateful", "saya", "happy", "blessed", "pinagpala"];
-    
-    const lowerQuestion = userQuestion.toLowerCase();
-    const isSad = sadKeywords.some(keyword => lowerQuestion.includes(keyword));
-    const isHappy = happyKeywords.some(keyword => lowerQuestion.includes(keyword));
-    
-    if (isSad) {
-      emotionalContext = "The user is expressing guilt, sadness, or concern about sin. Be GENTLE, COMPASSIONATE, and offer HOPE. DO NOT use cheerful greetings. Start with empathy like: 'Alam kong hindi madali ang pinagdadaanan mo...' or 'I understand that must be heavy...'";
-    } else if (isHappy) {
-      emotionalContext = "The user seems joyful or grateful. You can be warm and cheerful.";
-    } else {
-      emotionalContext = "Neutral tone. Be warm and helpful.";
-    }
-    
     // Add current question with user's name and emotional context
     fullPrompt += `EMOTIONAL CONTEXT: ${emotionalContext}\n\n`;
     fullPrompt += `User: ${userName} asked: ${userQuestion}\n\n`;
-    fullPrompt += `Assistant: Provide a Bible-based response that is emotionally appropriate to the user's situation. Be compassionate and helpful.`;
+    fullPrompt += `Assistant: Provide a Bible-based response that is emotionally appropriate. Follow the formatting rules: use TWO PARAGRAPHS with blank line for long answers, ONE PARAGRAPH for short answers.`;
 
     // Call the Vern REST API
     const response = await axios.get(
@@ -124,13 +125,22 @@ module.exports.run = async function ({ api, event, args }) {
     answer = answer.replace(/```/g, '').trim();
 
     // Ensure proper paragraph formatting
-    if (!answer.includes('\n\n') && answer.split('.').length > 4) {
+    // Count sentences to determine if it's a long answer
+    const sentenceCount = (answer.match(/[.!?]+/g) || []).length;
+    
+    // If answer is long (more than 3 sentences) and doesn't have paragraph breaks, try to split it
+    if (sentenceCount > 3 && !answer.includes('\n\n')) {
+      // Find a good place to split (after a sentence ending with period)
       const sentences = answer.match(/[^.!?]+[.!?]+/g);
-      if (sentences && sentences.length > 2) {
-        const midPoint = Math.floor(sentences.length / 2);
-        const firstPara = sentences.slice(0, midPoint).join(' ');
-        const secondPara = sentences.slice(midPoint).join(' ');
-        answer = `${firstPara}\n\n${secondPara}`;
+      if (sentences && sentences.length > 1) {
+        // Calculate split point (around halfway)
+        const splitPoint = Math.ceil(sentences.length / 2);
+        const firstPara = sentences.slice(0, splitPoint).join(' ').trim();
+        const secondPara = sentences.slice(splitPoint).join(' ').trim();
+        
+        if (secondPara.length > 0) {
+          answer = `${firstPara}\n\n${secondPara}`;
+        }
       }
     }
 
