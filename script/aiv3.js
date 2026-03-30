@@ -18,7 +18,7 @@ module.exports.config = {
   commandCategory: "ai",
   usages: "/aiv3 <question>",
   cooldowns: 5,
-  aliases: ["ai", "selov"]
+  aliases: ["puck", "selov"]
 };
 
 // Simple memory per thread
