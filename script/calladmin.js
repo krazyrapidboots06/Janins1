@@ -1,15 +1,22 @@
-const axios = require("axios");
-const fs = require("fs-extra");
-const path = require("path");
+"use strict";
 
-// Admin UIDs - Make sure these are correct
+const axios = require("axios");
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔧 ADMIN UIDs — Add your Facebook UID(s) here
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 const ADMIN_UIDS = ["61556388598622"];
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ⚙️ COMMAND CONFIG
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 module.exports.config = {
   name: "callad",
-  version: "2.0.1", // Updated version to reflect changes
-  hasPermssion: 0,
-  credits: "NTKhang & Manus", // Added Manus for the fix
+  version: "2.1.0",
+  role: 0,
+  credits: "NTKhang & Manus (fixed by selov)",
   description: "Send reports, feedback, bugs to bot admin",
   commandCategory: "contacts",
   usages: "/callad <message>",
@@ -17,216 +24,306 @@ module.exports.config = {
   aliases: ["report", "feedback"]
 };
 
-// Global store for reply handlers
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔧 GLOBAL REPLY HANDLER STORE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 if (!global.calladReplyHandlers) global.calladReplyHandlers = {};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔧 HELPER: Download attachment as stream
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+async function getAttachmentStreams(attachments) {
+  if (!attachments || !attachments.length) return [];
+  const streams = [];
+  for (const att of attachments) {
+    try {
+      const url = att.url || att.playbackUrl || att.previewUrl;
+      if (!url) continue;
+      const res = await axios.get(url, { responseType: "stream", timeout: 10000 });
+      streams.push(res.data);
+    } catch (_) {}
+  }
+  return streams;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🚀 MAIN RUN FUNCTION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID, isGroup, attachments, messageReply } = event;
-  const message = args.join(" ").trim();
+  const userMessage = args.join(" ").trim();
 
-  if (!message) {
+  // ── NO MESSAGE ──
+  if (!userMessage && !(attachments && attachments.length)) {
     return api.sendMessage(
-      "📨 **CALL ADMIN**\n━━━━━━━━━━━━━━━━\n" +
-      "Please enter the message you want to send to admin.\n\n" +
-      "**Example:** /callad There's a bug in the bot",
+      `📨 CALL ADMIN\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `Send a message or report to the bot admin.\n\n` +
+      `📌 Usage: /callad <message>\n` +
+      `📖 Example: /callad There is a bug in the bot\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━`,
       threadID,
       messageID
     );
   }
 
-  if (ADMIN_UIDS.length === 0) {
-    return api.sendMessage("❌ Bot has no admin configured.", threadID, messageID);
+  if (!ADMIN_UIDS.length) {
+    return api.sendMessage(
+      `❌ No admin UID configured in this bot.`,
+      threadID,
+      messageID
+    );
   }
 
-  // Set reaction
-  api.setMessageReaction("📨", messageID, () => {}, true);
-
-  // Get sender info with robust error handling
+  // ── GET SENDER INFO ──
   let senderName = "User";
   try {
     const userInfo = await api.getUserInfo(senderID);
     senderName = userInfo[senderID]?.name || "User";
   } catch (e) {
-    console.error("Error getting sender info:", e);
+    console.error("[callad] getUserInfo error:", e?.message);
   }
 
-  // Prepare message header
-  let msgHeader = `📨 **CALL ADMIN**\n━━━━━━━━━━━━━━━━\n👤 **User:** ${senderName}\n🆔 **ID:** ${senderID}`;
-  
+  // ── GET THREAD INFO ──
+  let threadName = "Private Chat";
   if (isGroup) {
-    let threadName = "Group Chat";
     try {
       const threadInfo = await api.getThreadInfo(threadID);
-      threadName = threadInfo.threadName || "Group Chat";
+      threadName = threadInfo.threadName || threadInfo.name || "Group Chat";
     } catch (e) {
-      console.error("Error getting thread info:", e);
+      console.error("[callad] getThreadInfo error:", e?.message);
+      threadName = "Group Chat";
     }
-    msgHeader += `\n📌 **Group:** ${threadName}\n🔢 **Group ID:** ${threadID}`;
-  } else {
-    msgHeader += `\n💬 **Private Message**`;
   }
 
-  const formMessage = {
-    body: msgHeader + `\n━━━━━━━━━━━━━━━━\n💬 **Message:**\n${message}\n━━━━━━━━━━━━━━━━\n💡 Reply to this message to respond to user.`,
-    mentions: [{ id: senderID, tag: senderName }]
-  };
+  // ── SET REACTION ──
+  try {
+    api.setMessageReaction("📨", messageID, () => {}, true);
+  } catch (_) {}
 
-  // NOTE: Attachment handling for remote URLs can be complex and might require downloading them first.
-  // For now, we will skip forwarding attachments to prevent potential issues.
-  // If attachment forwarding is critical, a more robust solution involving downloading 
-  // attachments to local temp files before sending would be needed.
-  // if (attachments && attachments.length > 0) {
-  //   formMessage.attachment = attachments.map(att => 
-  //     fs.createReadStream(att.url)
-  //   );
-  // }
+  // ── BUILD MESSAGE BODY ──
+  const msgBody =
+    `📨 CALL ADMIN — NEW MESSAGE\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 User     : ${senderName}\n` +
+    `🆔 UID      : ${senderID}\n` +
+    `💬 Source   : ${isGroup ? `Group Chat\n📌 Group    : ${threadName}\n🔢 Group ID : ${threadID}` : "Private Message"}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📝 Message  :\n${userMessage || "(No text — see attachment)"}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `💡 Reply to this message to respond to the user.`;
 
-  // Send to all admins
+  // ── BUILD FORM ──
+  const formSend = { body: msgBody };
+
+  // Attach media if present
+  const streams = await getAttachmentStreams(attachments || []);
+  if (streams.length) formSend.attachment = streams;
+
+  // ── SEND TO ALL ADMINS VIA PRIVATE MESSAGE ──
   const successIDs = [];
-  const failedIDs = [];
+  const failedIDs  = [];
 
-  for (const uid of ADMIN_UIDS) {
+  for (const adminUID of ADMIN_UIDS) {
     try {
-      // Check if admin exists and is reachable
-      const adminInfo = await api.getUserInfo(uid).catch(() => null);
-      if (!adminInfo || !adminInfo[uid]) {
-        failedIDs.push({ adminID: uid, error: "Admin UID not found or unreachable" });
-        continue;
-      }
-      
-      const sentMsg = await api.sendMessage(formMessage, uid);
-      successIDs.push(uid);
-      
+      // FIX 1: Send directly to adminUID (their personal inbox thread).
+      // Do NOT use api.getThreadInfo on a UID — that's for group threads.
+      // api.sendMessage(form, uid) sends a private/direct message when
+      // uid is a user ID (not a thread ID).
+      const sentMsg = await new Promise((resolve, reject) => {
+        api.sendMessage(formSend, adminUID, (err, info) => {
+          if (err) return reject(err);
+          resolve(info);
+        });
+      });
+
+      successIDs.push(adminUID);
+
+      // Store reply handler keyed by the sent message ID
       global.calladReplyHandlers[sentMsg.messageID] = {
         type: "userCallAdmin",
-        threadID: threadID,
-        messageIDSender: messageID,
-        senderID: senderID,
-        senderName: senderName
+        userThreadID: threadID,        // thread where user typed /callad
+        userMessageID: messageID,      // original message ID from user
+        userSenderID: senderID,        // user's UID
+        userSenderName: senderName,    // user's name
+        adminUID: adminUID             // which admin we sent to
       };
-      
+
+      console.log(`[callad] ✅ Sent to admin ${adminUID}, msgID: ${sentMsg.messageID}`);
     } catch (err) {
-      console.error(`Failed to send message to admin ${uid}:`, err);
-      failedIDs.push({ adminID: uid, error: err.message });
+      console.error(`[callad] ❌ Failed to send to admin ${adminUID}:`, err?.message || err);
+      failedIDs.push({ uid: adminUID, error: err?.message || "Unknown error" });
     }
   }
 
-  // Prepare result message
+  // ── RESULT TO USER ──
   if (successIDs.length > 0) {
-    api.sendMessage(`✅ **Message sent to ${successIDs.length} admin(s) successfully!**`, threadID, messageID);
-  } else if (failedIDs.length > 0) {
-    api.sendMessage(
-      `❌ **Failed to send message to admins.**\n\n` +
-      `💡 **Possible reasons:**\n` +
-      `• Admins may have blocked the bot\n` +
-      `• Admin UIDs may be incorrect or unreachable\n` +
-      `• Bot needs to be friends with admins\n` +
-      `• Error details for failed sends: ${failedIDs.map(f => `${f.adminID}: ${f.error}`).join("; ")}`,
+    return api.sendMessage(
+      `✅ MESSAGE SENT!\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `Your message has been sent to ${successIDs.length} admin(s).\n` +
+      `Please wait for their response. 🙏`,
       threadID,
       messageID
     );
-  } else {
-    api.sendMessage("⚠️ No admins configured or all failed to receive the message.", threadID, messageID);
   }
+
+  // All failed
+  let failDetail = failedIDs.map(f => `• UID ${f.uid}: ${f.error}`).join("\n");
+  return api.sendMessage(
+    `❌ FAILED TO REACH ADMIN\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Could not send your message to any admin.\n\n` +
+    `💡 Possible reasons:\n` +
+    `• Admin UID is incorrect\n` +
+    `• Bot is not friends with the admin account\n` +
+    `• Admin has blocked the bot\n\n` +
+    `🔍 Details:\n${failDetail}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    threadID,
+    messageID
+  );
 };
 
-// Handle replies from admins
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 💬 HANDLE REPLY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 module.exports.handleReply = async function ({ api, event }) {
   const { threadID, messageID, senderID, body, attachments, messageReply } = event;
 
+  // Must be a reply
   if (!messageReply) return;
 
-  const repliedMessageID = messageReply.messageID;
-  const handlerData = global.calladReplyHandlers[repliedMessageID];
+  const repliedMsgID = messageReply.messageID;
+  const handler = global.calladReplyHandlers[repliedMsgID];
+  if (!handler) return;
 
-  if (!handlerData) return;
+  const replyText = (body || "").trim();
 
-  const { type, threadID: userThreadID, messageIDSender, senderID: userSenderID, senderName: userName } = handlerData;
-
-  // Get current user info with robust error handling
-  let currentUserName = "Admin";
+  // Get replier's name
+  let replierName = "Unknown";
   try {
-    const currentUser = await api.getUserInfo(senderID);
-    currentUserName = currentUser[senderID]?.name || "Admin";
-  } catch (e) {
-    console.error("Error getting current user info for reply:", e);
-  }
+    const info = await api.getUserInfo(senderID);
+    replierName = info[senderID]?.name || "Unknown";
+  } catch (_) {}
 
-  const replyText = body || "";
+  // Get attachment streams if any
+  const streams = await getAttachmentStreams(attachments || []);
 
-  // NOTE: Attachment handling for remote URLs can be complex and might require downloading them first.
-  // For now, we will skip forwarding attachments to prevent potential issues.
-  // If attachment forwarding is critical, a more robust solution involving downloading 
-  // attachments to local temp files before sending would be needed.
-  const replyAttachments = [];
-  // if (attachments && attachments.length > 0) {
-  //   replyAttachments = attachments.map(att => 
-  //     fs.createReadStream(att.url)
-  //   );
-  // }
+  // ── ADMIN REPLYING TO USER ──────────────────────
+  if (handler.type === "userCallAdmin") {
+    const { userThreadID, userMessageID, userSenderID, userSenderName } = handler;
 
-  if (type === "userCallAdmin") {
-    // Admin replying to user
-    const replyMessage = {
-      body: `📨 **ADMIN REPLY**\n━━━━━━━━━━━━━━━━\n👤 **From:** ${currentUserName}\n━━━━━━━━━━━━━━━━\n💬 **Message:**\n${replyText}\n━━━━━━━━━━━━━━━━\n💡 Reply to continue conversation.`,
-      mentions: [{ id: senderID, tag: currentUserName }],
-      attachment: replyAttachments
-    };
+    const replyBody =
+      `📨 ADMIN REPLY\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 From Admin : ${replierName}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💬 Message    :\n${replyText || "(See attachment)"}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💡 Reply to this message to respond back.`;
 
-    api.sendMessage(replyMessage, userThreadID, (err, info) => {
+    const replyForm = { body: replyBody };
+    if (streams.length) replyForm.attachment = streams;
+
+    // FIX 2: Send back to the user's thread (group or private)
+    // using userThreadID — which is the correct thread/inbox
+    api.sendMessage(replyForm, userThreadID, (err, info) => {
       if (err) {
-        console.error(`❌ Failed to send reply to user ${userSenderID} in thread ${userThreadID}:`, err);
-        api.sendMessage(`❌ Failed to send reply: ${err.message}`, threadID, messageID);
-        return;
+        console.error("[callad] ❌ Admin reply to user failed:", err?.message);
+        return api.sendMessage(
+          `❌ Failed to send reply to user.\n` +
+          `Error: ${err?.message || "Unknown error"}`,
+          threadID,
+          messageID
+        );
       }
-      
-      api.sendMessage(`✅ **Reply sent to user successfully!**`, threadID, messageID);
-      
-      // Update handler for continuous conversation
+
+      // Confirm to admin
+      api.sendMessage(
+        `✅ Reply sent to ${userSenderName} successfully!`,
+        threadID,
+        messageID
+      );
+
+      // FIX 3: Re-register handler on the NEW sent message ID
+      // so the user can reply back and it chains correctly
       global.calladReplyHandlers[info.messageID] = {
         type: "adminReply",
-        threadID: threadID,
-        messageIDSender: info.messageID,
-        senderID: senderID,
-        senderName: currentUserName
+        adminThreadID: threadID,      // admin's inbox thread
+        adminMsgID: messageID,
+        adminUID: senderID,
+        adminName: replierName,
+        userSenderID: userSenderID,
+        userSenderName: userSenderName,
+        userThreadID: userThreadID
       };
-    }, messageIDSender);
-    
-  } else if (type === "adminReply") {
-    // User replying to admin's message
-    let groupInfo = "";
-    try {
-      const threadInfo = await api.getThreadInfo(threadID);
-      if (threadInfo && threadInfo.threadName) {
-        groupInfo = `\n📌 **Group:** ${threadInfo.threadName}\n🔢 **Group ID:** ${threadID}`;
-      }
-    } catch (e) {
-      console.error("Error getting thread info for user reply:", e);
-    }
-    
-    const feedbackMessage = {
-      body: `📨 **USER REPLY**\n━━━━━━━━━━━━━━━━\n👤 **User:** ${userName || "User"}\n🆔 **ID:** ${userSenderID}${groupInfo}\n━━━━━━━━━━━━━━━━\n💬 **Message:**\n${replyText}\n━━━━━━━━━━━━━━━━\n💡 Reply to continue conversation.`,
-      mentions: [{ id: userSenderID, tag: userName || "User" }],
-      attachment: replyAttachments
-    };
 
-    api.sendMessage(feedbackMessage, handlerData.threadID, (err, info) => {
-      if (err) {
-        console.error(`❌ Failed to send user reply to admin ${handlerData.senderID} in thread ${handlerData.threadID}:`, err);
-        api.sendMessage(`❌ Failed to send reply: ${err.message}`, threadID, messageID);
-        return;
+      console.log(`[callad] ✅ Admin reply delivered. New handlerID: ${info.messageID}`);
+    });
+  }
+
+  // ── USER REPLYING BACK TO ADMIN ─────────────────
+  else if (handler.type === "adminReply") {
+    const { adminThreadID, adminUID, adminName, userSenderID, userSenderName, userThreadID } = handler;
+
+    // Get source thread name if group
+    let sourceInfo = "Private Message";
+    try {
+      const tInfo = await api.getThreadInfo(threadID);
+      if (tInfo && tInfo.threadName) {
+        sourceInfo = `Group: ${tInfo.threadName} (${threadID})`;
       }
-      
-      api.sendMessage(`✅ **Reply sent to admin successfully!**`, threadID, messageID);
-      
-      // Update handler for continuous conversation
+    } catch (_) {}
+
+    const replyBody =
+      `📨 USER REPLY\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 User   : ${userSenderName || replierName}\n` +
+      `🆔 UID    : ${userSenderID || senderID}\n` +
+      `💬 Source : ${sourceInfo}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💬 Message:\n${replyText || "(See attachment)"}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💡 Reply to continue the conversation.`;
+
+    const replyForm = { body: replyBody };
+    if (streams.length) replyForm.attachment = streams;
+
+    // FIX 4: Send back to admin's thread (their private inbox)
+    api.sendMessage(replyForm, adminThreadID, (err, info) => {
+      if (err) {
+        console.error("[callad] ❌ User reply to admin failed:", err?.message);
+        return api.sendMessage(
+          `❌ Failed to send reply to admin.\n` +
+          `Error: ${err?.message || "Unknown error"}`,
+          threadID,
+          messageID
+        );
+      }
+
+      // Confirm to user
+      api.sendMessage(
+        `✅ Reply sent to admin successfully!`,
+        threadID,
+        messageID
+      );
+
+      // Re-register handler so admin can keep replying
       global.calladReplyHandlers[info.messageID] = {
         type: "userCallAdmin",
-        threadID: userThreadID,
-        messageIDSender: messageIDSender,
-        senderID: userSenderID,
-        senderName: userName
+        userThreadID: userThreadID || threadID,
+        userMessageID: messageID,
+        userSenderID: userSenderID || senderID,
+        userSenderName: userSenderName || replierName,
+        adminUID: adminUID
       };
-    }, handlerData.messageIDSender);
+
+      console.log(`[callad] ✅ User reply delivered to admin. New handlerID: ${info.messageID}`);
+    });
   }
 };
