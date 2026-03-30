@@ -1,35 +1,71 @@
-const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
+const axios = require('axios');
+const fs = require('fs-extra');
+const path = require('path');
+
+// Gemini API configuration - USING YOUR API KEY
+const GEMINI_API_KEY = "AIzaSyBQ_ozp3futjo4aM5oreIB_lsAbhCKzLOs";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent";
+
+// Fixed voice - Puck only
+const VOICE = "Puck";
 
 module.exports.config = {
   name: "ai",
-  version: "4.1.0",
-  hasPermssion: 0,
+  version: "1.0.0",
+  role: 0,
   credits: "selov",
-  prefix: false,
-  description: "AI with voice response that knows your name",
-  commandCategory: "search",
-  usages: "ai <ask a questions>",
-  cooldowns: 3
+  description: "AI with Puck voice TTS response",
+  commandCategory: "ai",
+  usages: "/ai <question>",
+  cooldowns: 5,
+  aliases: ["selov", "pucktts"]
 };
 
-// Simple memory per thread with user profiles
+// Simple memory per thread
 const memory = {};
 
-module.exports.run = async function ({ api, event, args }) {
-  const { threadID, messageID, attachments, senderID } = event;
+// AI character persona
+const AI_PERSONA = `You are a helpful AI assistant. Respond in a warm, friendly, and concise manner. Keep your answers short and helpful (under 200 characters).`;
 
+// Helper: Create WAV file from PCM data
+function createWaveFile(filePath, pcmData, channels = 1, rate = 24000, sampleWidth = 2) {
+  const wavHeader = Buffer.alloc(44);
+  
+  // RIFF chunk
+  wavHeader.write("RIFF", 0);
+  wavHeader.writeUInt32LE(36 + pcmData.length, 4);
+  wavHeader.write("WAVE", 8);
+  
+  // fmt subchunk
+  wavHeader.write("fmt ", 12);
+  wavHeader.writeUInt32LE(16, 16);
+  wavHeader.writeUInt16LE(1, 20);
+  wavHeader.writeUInt16LE(channels, 22);
+  wavHeader.writeUInt32LE(rate, 24);
+  wavHeader.writeUInt32LE(rate * channels * sampleWidth, 28);
+  wavHeader.writeUInt16LE(channels * sampleWidth, 32);
+  wavHeader.writeUInt16LE(sampleWidth * 8, 34);
+  
+  // data subchunk
+  wavHeader.write("data", 36);
+  wavHeader.writeUInt32LE(pcmData.length, 40);
+  
+  // Write header and data
+  fs.writeFileSync(filePath, wavHeader);
+  fs.appendFileSync(filePath, pcmData);
+}
+
+module.exports.run = async function ({ api, event, args }) {
+  const { threadID, messageID, senderID } = event;
   let prompt = args.join(" ").trim();
 
   try {
-    // Get user info with full details
+    // Get user name
     const user = await api.getUserInfo(senderID);
-    const userData = user[senderID];
-    const senderName = userData?.name || "User";
+    const senderName = user[senderID]?.name || "User";
     const firstName = senderName.split(' ')[0] || senderName;
 
-    // Initialize memory with user profile
+    // Initialize memory
     if (!memory[threadID]) {
       memory[threadID] = {
         users: {},
@@ -37,7 +73,7 @@ module.exports.run = async function ({ api, event, args }) {
       };
     }
     
-    // Store user info in thread memory
+    // Store user info
     memory[threadID].users[senderID] = {
       name: senderName,
       firstName: firstName,
@@ -45,50 +81,43 @@ module.exports.run = async function ({ api, event, args }) {
       interactions: (memory[threadID].users[senderID]?.interactions || 0) + 1
     };
 
-    // Check image
-    if (attachments && attachments.length > 0) {
-      const photo = attachments.find(a => a.type === "photo");
-      if (photo) {
-        const imageUrl = photo.url;
-        prompt = `Describe this photo in detail like a human. The user's name is ${firstName}:\n${imageUrl}`;
-      }
-    }
-
     if (!prompt) {
       return api.sendMessage(
-        `📌 Hello ${firstName}! Please ask me a question.\n\nExample: ai what is your name?`,
+        `🎙️ AI TTS COMMAND**\n━━━━━━━━━━━━━━━━\n` +
+        `Hello ${firstName}! Ask me anything and I'll respond with voice.\n\n` +
+        `Example: /aiv3 What is the meaning of life?\n` +
+        `Example: /aiv3 Tell me a joke\n` +
+        `Example: /aiv3 How are you today?\n\n` +
+        `🎤`,
         threadID,
         messageID
       );
     }
-
-    // Send typing indicator only
+    
+    // Show typing indicator
     api.sendTypingIndicator(threadID, true);
-
-    // Enhance prompt with user's name
-    const enhancedPrompt = `The user's name is ${firstName} (full name: ${senderName}). Please address them by their name in your response naturally. Keep your response concise and friendly. Question: ${prompt}`;
-
-    // Get AI response (YOUR ORIGINAL API)
+    
+    // Get AI response
+    const enhancedPrompt = `${AI_PERSONA}\n\nThe user's name is ${firstName}. Please address them by their name in your response. Question: ${prompt}`;
     const aiUrl = `https://vern-rest-api.vercel.app/api/chatgpt4?prompt=${encodeURIComponent(enhancedPrompt)}`;
-    const aiResponse = await axios.get(aiUrl);
-
-    if (!aiResponse.data) {
-      return; // Silent fail
+    const aiResponse = await axios.get(aiUrl, { timeout: 20000 });
+    
+    let replyText = "I'm sorry, I couldn't process that request.";
+    
+    if (aiResponse.data) {
+      if (aiResponse.data.result) replyText = aiResponse.data.result;
+      else if (aiResponse.data.response) replyText = aiResponse.data.response;
+      else if (aiResponse.data.message) replyText = aiResponse.data.message;
+      else if (aiResponse.data.answer) replyText = aiResponse.data.answer;
+      else if (typeof aiResponse.data === 'string') replyText = aiResponse.data;
     }
-
-    // Detect response format
-    const replyText =
-      aiResponse.data.result ||
-      aiResponse.data.response ||
-      aiResponse.data.message ||
-      aiResponse.data.answer;
-
-    if (!replyText) {
-      console.log("API RAW RESPONSE:", aiResponse.data);
-      return;
+    
+    // Limit length for TTS
+    if (replyText.length > 200) {
+      replyText = replyText.substring(0, 197) + "...";
     }
-
-    // Store conversation in memory
+    
+    // Store conversation
     memory[threadID].conversations.push({
       user: senderID,
       userName: firstName,
@@ -96,58 +125,90 @@ module.exports.run = async function ({ api, event, args }) {
       response: replyText,
       timestamp: Date.now()
     });
-
-    // Keep only last 10 conversations
+    
     if (memory[threadID].conversations.length > 10) {
       memory[threadID].conversations.shift();
     }
-
+    
     // Create cache directory
-    const cacheDir = path.join(__dirname, "cache");
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-    }
-
-    // FIXED: Using Google TTS which is most reliable
-    const ttsText = encodeURIComponent(replyText.substring(0, 200));
+    const cacheDir = path.join(__dirname, "cache", "aiv3");
+    await fs.ensureDir(cacheDir);
     
-    // Google TTS (always works, free, no API key needed)
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${ttsText}`;
-    
-    const audioPath = path.join(cacheDir, `tts_${Date.now()}.mp3`);
-    const audioResponse = await axios.get(ttsUrl, { 
-      responseType: "arraybuffer",
-      timeout: 30000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'http://translate.google.com/'
-      }
-    });
-
-    fs.writeFileSync(audioPath, audioResponse.data);
-
-    // Send ONLY audio
-    api.sendMessage(
-      {
-        attachment: fs.createReadStream(audioPath)
-      },
-      threadID,
-      (err) => {
-        if (err) console.error("Error sending audio:", err);
-        // Clean up file
-        try {
-          if (fs.existsSync(audioPath)) {
-            fs.unlinkSync(audioPath);
+    try {
+      // Prepare API request with your key
+      const url = `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`;
+      
+      const payload = {
+        contents: [
+          {
+            parts: [
+              {
+                text: replyText
+              }
+            ]
           }
-        } catch (e) {
-          console.error("Error deleting file:", e);
+        ],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: VOICE
+              }
+            }
+          }
         }
-      },
-      messageID
-    );
-
+      };
+      
+      const response = await axios.post(url, payload, {
+        timeout: 60000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      // Extract audio data from response
+      const audioData = response.data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      
+      if (!audioData) {
+        throw new Error("No audio data received");
+      }
+      
+      // Convert base64 to buffer
+      const audioBuffer = Buffer.from(audioData, 'base64');
+      
+      const audioPath = path.join(cacheDir, `aiv3_${Date.now()}.wav`);
+      
+      // Create WAV file from PCM data
+      createWaveFile(audioPath, audioBuffer);
+      
+      // Check file size
+      const stats = fs.statSync(audioPath);
+      if (stats.size === 0) {
+        throw new Error("Generated audio file is empty");
+      }
+      
+      // Send ONLY audio - no processing message
+      api.sendMessage({
+        attachment: fs.createReadStream(audioPath)
+      }, threadID, () => {
+        // Clean up file after sending
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(audioPath)) {
+              fs.unlinkSync(audioPath);
+            }
+          } catch (e) {}
+        }, 10000);
+      }, messageID);
+      
+    } catch (ttsErr) {
+      console.error("TTS Error:", ttsErr.response?.data || ttsErr.message);
+      // Silent fail - no error message to user
+    }
+    
   } catch (err) {
-    console.error("AI TTS Error:", err);
-    // Silent fail
+    console.error("AIv3 Error:", err);
+    // Silent fail - no error message to user
   }
 };
