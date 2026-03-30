@@ -6,7 +6,7 @@ const axios = require("axios");
 // 🔧 ADMIN UIDs — Add your Facebook UID(s) here
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const ADMIN_UIDS = ["61556388598622"];
+const ADMIN_UIDS = ["61552057602849"];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ COMMAND CONFIG
