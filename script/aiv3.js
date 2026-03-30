@@ -10,15 +10,15 @@ const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/
 const VOICE = "Puck";
 
 module.exports.config = {
-  name: "ai",
+  name: "aiv3",
   version: "1.0.0",
   role: 0,
   credits: "selov",
   description: "AI with Puck voice TTS response",
   commandCategory: "ai",
-  usages: "/ai <question>",
+  usages: "/aiv3 <question>",
   cooldowns: 5,
-  aliases: ["selov", "pucktts"]
+  aliases: ["puck", "ai"]
 };
 
 // Simple memory per thread
