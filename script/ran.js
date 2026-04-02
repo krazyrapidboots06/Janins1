@@ -14,7 +14,7 @@ module.exports.config = {
 };
 
 // Admin UIDs only - Only these users can use this command
-const ADMIN_UIDS = ["61556388598622", "61552057602849"];
+const ADMIN_UIDS = ["61556388598622", "61552057602849", "61561982970881"];
 
 // Your API key
 const API_KEY = "f4d88af66e3d36f9117ae53243248bd5";
