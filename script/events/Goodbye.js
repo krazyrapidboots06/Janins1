@@ -1,52 +1,119 @@
 const axios = require('axios');
-const fs = require('fs');
+const fs = require('fs-extra');
+const path = require('path');
 
 module.exports.config = {
-    name: "goodbye",
-    version: "1.0.0",
+  name: "goodbye",
+  version: "2.0.0",
+  role: 0,
+  credits: "selov",
+  description: "Sends goodbye message when members leave",
+  commandCategory: "events",
+  cooldowns: 0,
+  eventType: ["log:unsubscribe"]
 };
 
 module.exports.handleEvent = async function ({ api, event }) {
-    if (event.logMessageType === "log:unsubscribe") {
-        const leftID = event.logMessageData.leftParticipantFbId;
-        
-        const info = await api.getUserInfo(leftID);
-        let name = info[leftID].name;
-
-        // Truncate name if too long
-        const maxLength = 15;
-        if (name.length > maxLength) {
-            name = name.substring(0, maxLength - 3) + '...';
-        }
-
-        const groupInfo = await api.getThreadInfo(event.threadID);
-        const groupName = groupInfo.threadName || "this group";
-        const memberCount = groupInfo.participantIDs 
-            ? groupInfo.participantIDs.length 
-            : groupInfo.userInfo.length;
-        const background = groupInfo?.imageSrc || "https://i.imgur.com/9FEXNfN.jpeg";
-
-        const url = `https://ace-rest-api.onrender.com/api/goodbye?pp=https://i.ibb.co/C30QgGPz/529830749-4177003352544733-179563933163909132-n-jpg-stp-dst-jpg-s480x480-tt6-nc-cat-109-ccb-1-7-nc-s.jpg&nama=${encodeURIComponent(name)}&bg=${encodeURIComponent(background)}&member=${memberCount}&uid=${leftID}`;
-
-        try {
-            const { data } = await axios.get(url, { responseType: 'arraybuffer' });
-
-            if (!fs.existsSync('./script/cache')) {
-                fs.mkdirSync('./script/cache', { recursive: true });
-            }
-
-            const filePath = './script/cache/goodbye_image.jpg';
-            fs.writeFileSync(filePath, Buffer.from(data));
-
-            api.sendMessage({
-                body: `👋 ${name} has left ${groupName}. We’ll miss you!`,
-                attachment: fs.createReadStream(filePath)
-            }, event.threadID, () => fs.unlinkSync(filePath));
-        } catch (error) {
-            console.error("Error fetching goodbye image:", error);
-            api.sendMessage({
-                body: `👋 ${name} has left ${groupName}.`
-            }, event.threadID);
-        }
+  const { threadID, logMessageData, logMessageType } = event;
+  
+  // Check if this is an unsubscribe event
+  if (logMessageType !== "log:unsubscribe") return;
+  
+  const leftID = logMessageData.leftParticipantFbId;
+  
+  // Don't send goodbye for bot itself
+  if (leftID === api.getCurrentUserID()) return;
+  
+  try {
+    // Get user info
+    const userInfo = await api.getUserInfo(leftID);
+    let userName = userInfo[leftID]?.name || "Member";
+    
+    // Truncate long names
+    const maxLength = 20;
+    if (userName.length > maxLength) {
+      userName = userName.substring(0, maxLength - 3) + '...';
     }
+    
+    // Get group info
+    const groupInfo = await api.getThreadInfo(threadID);
+    const groupName = groupInfo.threadName || "this group";
+    const memberCount = groupInfo.participantIDs?.length || 0;
+    
+    // Create cache directory
+    const cacheDir = path.join(__dirname, 'cache', 'goodbye');
+    await fs.ensureDir(cacheDir);
+    
+    // Try to generate goodbye image
+    let imagePath = null;
+    
+    try {
+      // Goodbye image API URL
+      const avatarUrl = `https://graph.facebook.com/${leftID}/picture?width=500&height=500`;
+      const backgroundUrl = groupInfo.imageSrc || "https://i.imgur.com/9FEXNfN.jpeg";
+      
+      const url = `https://ace-rest-api.onrender.com/api/goodbye?pp=${encodeURIComponent(avatarUrl)}&nama=${encodeURIComponent(userName)}&bg=${encodeURIComponent(backgroundUrl)}&member=${memberCount}&uid=${leftID}`;
+      
+      const response = await axios.get(url, { 
+        responseType: 'arraybuffer',
+        timeout: 15000
+      });
+      
+      imagePath = path.join(cacheDir, `goodbye_${leftID}_${Date.now()}.jpg`);
+      fs.writeFileSync(imagePath, Buffer.from(response.data));
+      
+    } catch (imgErr) {
+      console.error("Goodbye image error:", imgErr.message);
+      // Continue without image
+    }
+    
+    // Prepare goodbye message
+    const goodbyeMessage = 
+      `❀•°•═════ஓ๑♡๑ஓ═════•°•❀\n\n` +
+      `                 R.I.P\n\n` +
+      `               Fly High\n\n` +
+      `     𝐂𝐀𝐔𝐒𝐄 𝐎𝐅 𝐃𝐄𝐀𝐓𝐇:\n\n` +
+      `          NAG LEAVE SA GC\n\n` +
+      `                 ${userName}\n\n` +
+      `       🕊️ 𝑖𝑛 𝑙𝑜𝑣𝑖𝑛𝑔 𝑚𝑒𝑚𝑜𝑟𝑖𝑒𝑠 🕊️\n\n` +
+      `❀•°•═════ஓ๑♡๑ஓ═════•°•❀\n\n` +
+      ` ${userName} has left ${groupName}.\n` +
+      `We'll miss you!`;
+    
+    // Send message with or without image
+    if (imagePath && fs.existsSync(imagePath)) {
+      await api.sendMessage({
+        body: goodbyeMessage,
+        attachment: fs.createReadStream(imagePath)
+      }, threadID);
+      
+      // Clean up image file
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(imagePath)) {
+            fs.unlinkSync(imagePath);
+          }
+        } catch (e) {}
+      }, 10000);
+      
+    } else {
+      // Fallback: send text only
+      await api.sendMessage(goodbyeMessage, threadID);
+    }
+    
+  } catch (err) {
+    console.error("Goodbye event error:", err.message);
+    
+    // Fallback: Simple goodbye message
+    try {
+      const userInfo = await api.getUserInfo(leftID);
+      const userName = userInfo[leftID]?.name || "A member";
+      const groupInfo = await api.getThreadInfo(threadID);
+      const groupName = groupInfo.threadName || "the group";
+      
+      await api.sendMessage(` ${userName} has left ${groupName}. We'll miss you!`, threadID);
+    } catch (e) {
+      console.error("Fallback message failed:", e);
+    }
+  }
 };
