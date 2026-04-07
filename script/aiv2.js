@@ -2,18 +2,28 @@ const axios = require('axios');
 
 module.exports.config = {
   name: "aiv2",
-  version: "1.0.0",
+  version: "2.0.0",
   role: 0,
   credits: "selov",
-  description: "Bible AI assistant (answer only)",
+  description: "Bible AI assistant with paragraph-style responses",
   commandCategory: "ai",
   usages: "/aiv2 <question>",
   cooldowns: 3,
-  aliases: ["bibleai", "bibleask2"]
+  aliases: ["bibleai2", "bibleask2"]
 };
 
 // Store user sessions
 if (!global.aiv2Sessions) global.aiv2Sessions = {};
+
+// Custom prompt to format responses as paragraphs
+const FORMAT_PROMPT = `Please respond in a warm, pastoral tone with proper paragraph formatting. 
+Write in Taglish (mix of Tagalog and English). Use Scripture verses when appropriate.
+Format your response with:
+- First paragraph: Empathetic response addressing the user's concern with a Bible verse
+- Then numbered list (1., 2., 3., etc.) for practical steps or key points
+- Final paragraph: Encouraging conclusion
+
+Keep the response helpful, compassionate, and Bible-based.`;
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -24,9 +34,10 @@ module.exports.run = async function ({ api, event, args }) {
       `📖 Bible AI\n━━━━━━━━━━━━━━━━\n` +
       `Ask me anything about the Bible!\n\n` +
       `Examples:\n` +
-      `• /aiv2 What does the Bible say about love?\n` +
+      `• /aiv2 Ano ang gagawin ko kapag nagkasala ako?\n` +
+      `• /aiv2 What does the Bible say about forgiveness?\n` +
       `• /aiv2 Explain John 3:16\n` +
-      `• /aiv2 Nagkasala ako, ano ang gagawin ko?`,
+      `• /aiv2 How can I grow in faith?`,
       threadID,
       messageID
     );
@@ -39,8 +50,11 @@ module.exports.run = async function ({ api, event, args }) {
     // Get user's session ID or create new one
     let sessionId = global.aiv2Sessions[senderID];
     
-    // Call the BibleGPT API
-    const apiUrl = `https://restapi-ratx.onrender.com/api/biblegpt?q=${encodeURIComponent(userQuestion)}&session_id=${sessionId || ''}`;
+    // Enhanced prompt for paragraph-style response
+    const enhancedQuestion = `${FORMAT_PROMPT}\n\nUser's question: ${userQuestion}`;
+    
+    // Call the BibleGPT API with enhanced prompt
+    const apiUrl = `https://restapi-ratx.onrender.com/api/biblegpt?q=${encodeURIComponent(enhancedQuestion)}&session_id=${sessionId || ''}`;
     
     const response = await axios.get(apiUrl, { timeout: 30000 });
     
@@ -55,10 +69,10 @@ module.exports.run = async function ({ api, event, args }) {
       global.aiv2Sessions[senderID] = response.data.session_id;
     }
     
-    // Clean up answer (remove markdown)
+    // Clean up answer
     answer = answer.replace(/```/g, '').trim();
     
-    // Send ONLY the answer (no extra formatting)
+    // Send the paragraph-style answer
     return api.sendMessage(answer, threadID, messageID);
     
   } catch (err) {
