@@ -53,7 +53,7 @@ module.exports.run = async function ({ api, event }) {
     console.error("Support Group Error:", err);
     
     // Handle specific errors
-    let errorMessage = "❌ Failed to add you to the support group.\n\n";
+    let errorMessage = "❌ CHAT MO OWNER KO PARA MA ADD SA SUPPORT GC: https://facebook.com/quart.hade  or https://www.facebook.com/messages/t/1231424145851292\n\n";
     
     if (err.message.includes("block")) {
       errorMessage += "**Reason:** You have blocked the bot or have privacy settings that prevent being added.";
