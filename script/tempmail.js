@@ -5,7 +5,7 @@ const API_BASE_URL = "https://temporary-emaill.netlify.app/api/messages";
 
 module.exports.config = {
   name: "tempmail",
-  version: "1.0.0",
+  version: "1.0.6", // Updated version for fix
   hasPermssion: 0,
   credits: "selov",
   description: "Generate temporary email addresses and check their inboxes.",
@@ -24,9 +24,7 @@ module.exports.run = async function ({ api, event, args }) {
     const newEmail = `${randomString}${DOMAIN}`;
 
     api.sendMessage(
-      `📧 Temporary Email Generated:\n━━━━━━━━━━━━━━━━\nYour new temporary email address is: 
-${newEmail}\n\nTo check its inbox, use: 
-tempmail inbox ${newEmail}**\n\nThis email is valid for a short period.`, 
+      `📧 Temporary Email Generated:\n━━━━━━━━━━━━━━━━\nYour new temporary email address is: \n${newEmail}\n\nTo check its inbox, use: \ntempmail inbox ${newEmail}\n\nThis email is valid for a short period.`, 
       threadID,
       messageID
     );
@@ -49,34 +47,43 @@ tempmail inbox ${newEmail}**\n\nThis email is valid for a short period.`,
       );
     }
 
-    try {
-      api.sendMessage(`⏳ Checking inbox for ${emailAddress}...`, threadID);
-      const response = await axios.get(`${API_BASE_URL}?address=${encodeURIComponent(emailAddress)}`);
-      const messages = response.data;
-
-      if (!messages || messages.length === 0) {
-        return api.sendMessage(`📥 Inbox for ${emailAddress} is empty.`, threadID, messageID);
+    // 1. Send the "Checking..." message first and wait for it to be sent
+    api.sendMessage(`⏳ Checking inbox for ${emailAddress}...`, threadID, async (err, info) => {
+      if (err) {
+        console.error("Error sending checking message:", err);
+        return; // Stop if we can't even send the initial message
       }
 
-      let inboxContent = `📥 **Inbox for ${emailAddress}:**\n━━━━━━━━━━━━━━━━\n`;
-      messages.forEach((msg, index) => {
-        inboxContent += `${index + 1}. From: ${msg.from}\n`;
-        inboxContent += `Subject: ${msg.subject || "(No Subject)"}\n`;
-        inboxContent += `Date: ${new Date(msg.date).toLocaleString()}\n`;
-        inboxContent += `Body: ${msg.body.substring(0, 150)}...\n`; // Truncate long bodies
-        inboxContent += `------------------------\n`;
-      });
+      try {
+        // 2. Fetch the inbox data AFTER the "Checking..." message is sent
+        const response = await axios.get(`${API_BASE_URL}?address=${encodeURIComponent(emailAddress)}`);
+        const messages = response.data;
 
-      api.sendMessage(inboxContent, threadID, messageID);
+        // 3. Evaluate the response and send the final result
+        if (!messages || !Array.isArray(messages) || messages.length === 0) {
+          return api.sendMessage(`📥 Inbox for ${emailAddress} is empty.`, threadID, messageID);
+        }
 
-    } catch (error) {
-      console.error("Error fetching tempmail inbox:", error);
-      api.sendMessage(
-        `❌ Failed to fetch inbox for ${emailAddress}. Please try again later.`, 
-        threadID,
-        messageID
-      );
-    }
+        let inboxContent = `📥 Inbox for ${emailAddress}:\n━━━━━━━━━━━━━━━━\n`;
+        messages.forEach((msg, index) => {
+          inboxContent += `${index + 1}. From: ${msg.from || "Unknown"}\n`;
+          inboxContent += `Subject: ${msg.subject || "(No Subject)"}\n`;
+          inboxContent += `Date: ${msg.date ? new Date(msg.date).toLocaleString() : "Unknown"}\n`;
+          inboxContent += `Body: ${msg.body ? msg.body.substring(0, 200) : "(No Content)"}...\n`; // Truncate long bodies
+          inboxContent += `------------------------\n`;
+        });
+
+        api.sendMessage(inboxContent, threadID, messageID);
+
+      } catch (error) {
+        console.error("Error fetching tempmail inbox:", error);
+        api.sendMessage(
+          `❌ Failed to fetch inbox for ${emailAddress}. Please try again later.`, 
+          threadID,
+          messageID
+        );
+      }
+    }, messageID); // Reply to the user's command
   } else {
     api.sendMessage(
       "📌 Usage:\n• tempmail (to generate a new email)\n• tempmail inbox <email_address> (to check inbox)",
