@@ -9,7 +9,7 @@ const SUPPORT_GROUP_ID = "1656635809077071";
 const ADMIN_UIDS = ["61556388598622", "61552057602849"];
 
 module.exports.config = {
-  name: "callad",
+  name: "feedback",
   version: "3.0.0",
   role: 0,
   credits: "selov",
