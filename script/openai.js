@@ -2,14 +2,14 @@ const axios = require('axios');
 
 module.exports.config = {
   name: "openai",
-  version: "1.0.0",
+  version: "1.1.0",
   role: 0,
   credits: "selov",
   description: "Chat with OpenAI (text only)",
   commandCategory: "ai",
   usages: "/openai <question>",
   cooldowns: 3,
-  aliases: ["open", "chatgpt", "jay"]
+  aliases: ["open", "jay", "openai"]
 };
 
 // Store conversation memory per user
@@ -25,10 +25,9 @@ module.exports.run = async function ({ api, event, args }) {
       `Ask me anything!\n\n` +
       `Usage: /openai <question>\n` +
       `Examples:\n` +
-      `• /openai ai bayut\n` +
-      `• /openai ayw ana oy?\n` +
-      `• /openai taronga ko\n` +
-      `• /openai Hungiti ko`,
+      `• /openai sure ou\n` +
+      `• /openai ayaw oy\n` +
+      `• /openai maloy oy ka`,
       threadID,
       messageID
     );
@@ -37,12 +36,7 @@ module.exports.run = async function ({ api, event, args }) {
   // Show typing indicator
   api.sendTypingIndicator(threadID, true);
 
-  const processingMsg = await api.sendMessage(`🤔 nagiisip si openai... kunyare merong utak yarn`, threadID);
-
   try {
-    // Get user's session ID or create new one
-    let sessionId = global.openaiMemory[senderID];
-    
     // Call the API
     const apiUrl = `https://rest-api-ruhv.onrender.com/api/jay?prompt=${encodeURIComponent(prompt)}&uid=${senderID}`;
     
@@ -62,23 +56,20 @@ module.exports.run = async function ({ api, event, args }) {
     // Clean up the response
     replyText = replyText.replace(/```/g, '').trim();
     
-    // Delete processing message
-    await api.unsendMessage(processingMsg.messageID);
-    
-    // Send ONLY the response (no extra formatting)
+    // Send ONLY the answer
     return api.sendMessage(replyText, threadID, messageID);
     
   } catch (err) {
     console.error("OpenAI Error:", err);
     
-    let errorMsg = "❌ pasayloa ko, hindi ko kayang i proseso ang iyong requests . Hintayin monalang or ulitin ito mayamaya";
+    let errorMsg = "❌ pasensya na diko ma process ang iyong requests. balik kanalang.";
     
     if (err.code === 'ECONNABORTED') {
-      errorMsg = "❌ ubos na ang time extend kanalang. Balik kanalang bukas ";
+      errorMsg = "❌ walang kanang oras extend kanalang. balik ka mayamaya.";
     } else if (err.response?.status === 500) {
-      errorMsg = "❌ Server ang problema . Please try again later.";
+      errorMsg = "❌ sira ang server kasi may problema. Please try again later.";
     }
     
-    await api.editMessage(errorMsg, processingMsg.messageID);
+    return api.sendMessage(errorMsg, threadID, messageID);
   }
 };
