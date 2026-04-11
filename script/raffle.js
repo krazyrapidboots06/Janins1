@@ -2,7 +2,7 @@ const axios = require('axios');
 
 module.exports.config = {
   name: "raffle",
-  version: "3.0.0",
+  version: "4.0.0",
   role: 0,
   credits: "selov",
   description: "Join or manage raffle entries",
@@ -21,13 +21,12 @@ module.exports.run = async function ({ api, event, args }) {
   // HELP - No arguments
   if (!action) {
     return api.sendMessage(
-      `🎟️ **RAFFLE COMMANDS**\n━━━━━━━━━━━━━━━━\n` +
+      `🎟️ RAFFLE COMMANDS\n━━━━━━━━━━━━━━━━\n` +
       `• /raffle join <name> | <gcash_number> | <gcash_name> - Join raffle\n` +
       `• /raffle list - View all participants\n` +
-      `• /raffle remove <id> - Remove entry\n` +
+      `• /raffle remove <number> - Remove entry by number\n` +
       `• /raffle spin - Pick a winner (Admin only)\n\n` +
-      `Example: /raffle join Selov Asx | 09916527333 | Selov Asx\n` +
-      `Or: /raffle join "Selov Asx" 09916527333 "Selov Asx"`,
+      `Example: /raffle join Selov Asx | 09916527333 | Selov Asx`,
       threadID,
       messageID
     );
@@ -35,19 +34,18 @@ module.exports.run = async function ({ api, event, args }) {
 
   // ========== JOIN RAFFLE ==========
   if (action === "join") {
-    // Remove the first argument "join" and get the rest
     const rest = args.slice(1).join(" ");
     
     let name, gcashNumber, gcashName;
     
-    // Try to parse with | separator first
+    // Parse with | separator
     if (rest.includes("|")) {
       const parts = rest.split("|").map(p => p.trim());
       name = parts[0];
       gcashNumber = parts[1];
       gcashName = parts[2];
     } 
-    // Try to parse with quotes
+    // Parse with quotes
     else if (rest.includes('"')) {
       const matches = rest.match(/"([^"]+)"|\S+/g);
       if (matches) {
@@ -57,7 +55,7 @@ module.exports.run = async function ({ api, event, args }) {
         gcashName = cleanMatches.slice(2).join(" ");
       }
     }
-    // Simple space separation (name might have spaces issue)
+    // Simple space separation
     else {
       const parts = rest.split(" ");
       name = parts[0];
@@ -65,21 +63,18 @@ module.exports.run = async function ({ api, event, args }) {
       gcashName = parts.slice(2).join(" ");
     }
     
-    // Validate
     if (!name || !gcashNumber || !gcashName) {
       return api.sendMessage(
         `❌ Invalid format!\n\n` +
-        `Option 1 (using | separator):\n` +
+        `Correct format:\n` +
         `/raffle join Selov Asx | 09916527333 | Selov Asx\n\n` +
-        `Option 2 (using quotes):\n` +
-        `/raffle join "Selov Asx" 09916527333 "Selov Asx"\n\n` +
-        `Note: GCash number must be 11 digits starting with 09`,
+        `Note: Use | (pipe) to separate name, number, and GCash name`,
         threadID,
         messageID
       );
     }
     
-    // Validate GCash number format (Philippines: 11 digits starting with 09)
+    // Validate GCash number
     if (!/^09\d{9}$/.test(gcashNumber)) {
       return api.sendMessage(
         `❌ Invalid GCash number!\n\n` +
@@ -93,7 +88,7 @@ module.exports.run = async function ({ api, event, args }) {
     const waitingMsg = await api.sendMessage(`🎟️ Registering ${name} to raffle...`, threadID);
 
     try {
-      // URL encode the parameters properly
+      // URL encode parameters properly
       const response = await axios.get(`${API_BASE}/raffle`, {
         params: {
           name: name,
@@ -114,14 +109,14 @@ module.exports.run = async function ({ api, event, args }) {
 
         const successMsg = 
           `✅ RAFFLE REGISTRATION SUCCESSFUL!\n━━━━━━━━━━━━━━━━\n` +
-          `🎫 Entry #${entry.number}\n` +
+          `🎫 Entry #${entry.number}**\n` +
           `👤 Name: ${entry.name}\n` +
           `📱 GCash #: ${entry.gcash_number}\n` +
           `💳 GCash Name: ${entry.gcash_name}\n` +
           `🆔 Entry ID: ${entry.id}\n` +
           `━━━━━━━━━━━━━━━━\n` +
           `📊 Total Entries: ${totalEntries}\n` +
-          `🎉 Keep your entry number! Winners will be announced soon.`;
+          `🎉 ${response.data.next_steps || "Keep your entry number!"}`;
 
         await api.editMessage(successMsg, waitingMsg.messageID);
       } else {
@@ -130,22 +125,13 @@ module.exports.run = async function ({ api, event, args }) {
 
     } catch (err) {
       console.error("Join raffle error:", err);
-      console.error("Error details:", err.response?.data);
       
       let errorMsg = "❌ Failed to register.";
-      
       if (err.response?.status === 400) {
-        errorMsg = "❌ Invalid registration data. Please check:\n" +
-                   "• Name should not be empty\n" +
-                   "• GCash number must be valid\n" +
-                   "• GCash name should not be empty\n\n" +
-                   `Try: /raffle join "Jay Bohol" | 09916527333 | "Junrey bohol"`;
+        errorMsg = "❌ Invalid registration data. Please check your information.";
       } else if (err.response?.data?.message) {
         errorMsg = `❌ ${err.response.data.message}`;
-      } else {
-        errorMsg = `❌ Failed to register: ${err.message}`;
       }
-      
       await api.editMessage(errorMsg, waitingMsg.messageID);
     }
     return;
@@ -175,11 +161,10 @@ module.exports.run = async function ({ api, event, args }) {
           listMsg += `   👤 Name: ${p.name}\n`;
           listMsg += `   📱 GCash: ${p.gcash_number}\n`;
           listMsg += `   💳 Account: ${p.gcash_name}\n`;
-          listMsg += `   🆔 ID: ${p.id}\n`;
-          listMsg += `   📅 Registered: ${new Date(p.registered_at).toLocaleString()}\n\n`;
+          listMsg += `   📅 Joined: ${new Date(p.joined_at).toLocaleString()}\n\n`;
         });
 
-        listMsg += `━━━━━━━━━━━━━━━━\n💡 Total entries: ${total}`;
+        listMsg += `━━━━━━━━━━━━━━━━\n🔒 *GCash details are masked for privacy*`;
 
         await api.editMessage(listMsg, waitingMsg.messageID);
       } else {
@@ -195,29 +180,42 @@ module.exports.run = async function ({ api, event, args }) {
 
   // ========== REMOVE PARTICIPANT ==========
   if (action === "remove") {
-    const removeId = args[1];
+    const removeNumber = args[1];
 
-    if (!removeId) {
+    if (!removeNumber) {
       return api.sendMessage(
-        `❌ Please provide the entry ID or number to remove.\n\n` +
-        `Usage: /raffle remove <id>\n` +
-        `Example: /raffle remove 3\n` +
-        `Tip: Use /raffle list to find the entry number or ID.`,
+        `❌ Please provide the entry number to remove.\n\n` +
+        `Usage: /raffle remove <number>\n` +
+        `Example: /raffle remove 1\n` +
+        `Tip: Use /raffle list to find the entry number.`,
         threadID,
         messageID
       );
     }
 
-    const waitingMsg = await api.sendMessage(`🗑️ Removing entry ${removeId}...`, threadID);
+    const waitingMsg = await api.sendMessage(`🗑️ Removing entry #${removeNumber}...`, threadID);
 
     try {
       const response = await axios.get(`${API_BASE}/raffle`, {
-        params: { remove: removeId },
+        params: { remove: removeNumber },
         timeout: 10000
       });
 
       if (response.data?.status === true) {
-        await api.editMessage(`✅ ${response.data.message || `Entry ${removeId} removed successfully!`}`, waitingMsg.messageID);
+        const removed = response.data.removed_entry;
+        const remaining = response.data.remaining_entries;
+        
+        const successMsg = 
+          `✅ ENTRY REMOVED!\n━━━━━━━━━━━━━━━━\n` +
+          `🎫 Removed Entry #${removed.number}\n` +
+          `👤 Name: ${removed.name}\n` +
+          `📱 GCash: ${removed.gcash_number}\n` +
+          `💳 Account: ${removed.gcash_name}\n` +
+          `━━━━━━━━━━━━━━━━\n` +
+          `📊 Remaining Entries: ${remaining}\n` +
+          `📌 ${response.data.note || "Entry numbers have been reordered."}`;
+
+        await api.editMessage(successMsg, waitingMsg.messageID);
       } else {
         throw new Error(response.data?.message || "Removal failed");
       }
@@ -227,7 +225,7 @@ module.exports.run = async function ({ api, event, args }) {
       
       let errorMsg = "❌ Failed to remove entry.";
       if (err.response?.status === 404) {
-        errorMsg = "❌ Entry not found. Please check the ID and try again.";
+        errorMsg = "❌ Entry not found. Please check the number and try again.";
       }
       await api.editMessage(errorMsg, waitingMsg.messageID);
     }
@@ -244,6 +242,7 @@ module.exports.run = async function ({ api, event, args }) {
     const waitingMsg = await api.sendMessage(`🎰 Spinning the raffle wheel...`, threadID);
 
     try {
+      // Get participants list
       const listResponse = await axios.get(`${API_BASE}/spin?action=list`, {
         timeout: 10000
       });
@@ -255,6 +254,7 @@ module.exports.run = async function ({ api, event, args }) {
         return api.editMessage(`❌ No participants to pick from.`, waitingMsg.messageID);
       }
 
+      // Pick random winner
       const randomIndex = Math.floor(Math.random() * participants.length);
       const winner = participants[randomIndex];
 
@@ -262,11 +262,11 @@ module.exports.run = async function ({ api, event, args }) {
         `🎉 RAFFLE WINNER! 🎉\n━━━━━━━━━━━━━━━━\n` +
         `🎫 Entry #${winner.number}\n` +
         `👤 Name: ${winner.name}\n` +
-        `📱 GCash #: ${winner.gcash_number}\n` +
-        `💳 GCash Name: ${winner.gcash_name}\n` +
-        `🆔 Entry ID: ${winner.id}\n` +
+        `📱 GCash: ${winner.gcash_number}\n` +
+        `💳 Account: ${winner.gcash_name}\n` +
         `━━━━━━━━━━━━━━━━\n` +
-        `🎊 Congratulations! 🎊`;
+        `🎊 Congratulations! 🎊\n\n` +
+        `📌 Winner will be contacted via GCash.`;
 
       await api.editMessage(winnerMsg, waitingMsg.messageID);
 
