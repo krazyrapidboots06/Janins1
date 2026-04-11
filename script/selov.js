@@ -6,7 +6,7 @@ module.exports.config = {
   name: "selov",
   version: "3.0.0",
   role: 0,
-  credits: "selov",
+  credits: "aiv3",
   description: "AI with Tsundere voice TTS (AI response + audio)",
   commandCategory: "ai",
   usages: "/aiv3 <question>",
@@ -65,7 +65,7 @@ module.exports.run = async function ({ api, event, args }) {
     }
     
     // Step 2: Convert AI response to Tsundere voice
-    const ttsUrl = `https://rest-api-ruhv.onrender.com/api/api/ai/tsundere?text=${encodeURIComponent(aiText)}`;
+    const ttsUrl = `https://restapijay.onrender.com/api/api/ai/tsundere?text=${encodeURIComponent(aiText)}`;
     
     const ttsResponse = await axios.get(ttsUrl, { timeout: 30000 });
     
