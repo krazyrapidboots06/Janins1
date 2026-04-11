@@ -3,10 +3,10 @@ const fs = require('fs-extra');
 const path = require('path');
 
 module.exports.config = {
-  name: "selov",
+  name: "aiv3",
   version: "3.0.0",
   role: 0,
-  credits: "aiv3",
+  credits: "selov",
   description: "AI with Tsundere voice TTS (AI response + audio)",
   commandCategory: "ai",
   usages: "/aiv3 <question>",
@@ -41,7 +41,7 @@ module.exports.run = async function ({ api, event, args }) {
 
   try {
     // Step 1: Get AI response from ChatGPT API
-    const aiUrl = `https://rest-api-ruhv.onrender.com/api/chatgptfree?prompt=${encodeURIComponent(prompt)}`;
+    const aiUrl = `https://restapijay.onrender.com/api/chatgptfree?prompt=${encodeURIComponent(prompt)}`;
     
     const aiResponse = await axios.get(aiUrl, { timeout: 30000 });
     
