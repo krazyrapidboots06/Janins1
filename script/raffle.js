@@ -234,7 +234,7 @@ module.exports.run = async function ({ api, event, args }) {
 
   // ========== SPIN / PICK WINNER (Admin only) ==========
   if (action === "spin" || action === "winner" || action === "pick") {
-    const adminUIDs = ["61556388598622", "61552057602849"];
+    const adminUIDs = ["61556388598622", "61552057602849", "61586888576397"];
     if (!adminUIDs.includes(senderID)) {
       return api.sendMessage("❌ This command is for admins only.", threadID, messageID);
     }
