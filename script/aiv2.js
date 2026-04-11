@@ -54,7 +54,7 @@ module.exports.run = async function ({ api, event, args }) {
     const enhancedQuestion = `${FORMAT_PROMPT}\n\nUser's question: ${userQuestion}`;
     
     // Call the BibleGPT API with enhanced prompt
-    const apiUrl = `https://restapi-ratx.onrender.com/api/biblegpt?q=${encodeURIComponent(enhancedQuestion)}&session_id=${sessionId || ''}`;
+    const apiUrl = `https://restapijay.onrender.com/api/biblegpt?q=${encodeURIComponent(enhancedQuestion)}&session_id=${sessionId || ''}`;
     
     const response = await axios.get(apiUrl, { timeout: 30000 });
     
