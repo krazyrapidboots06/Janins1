@@ -2,17 +2,21 @@ const axios = require('axios');
 
 module.exports.config = {
   name: "raffle",
-  version: "4.0.0",
+  version: "5.0.0",
   role: 0,
   credits: "selov",
   description: "Join or manage raffle entries",
   commandCategory: "game",
-  usages: "/raffle [join|list|remove|spin]",
+  usages: "/raffle [join|list|spin|winners|reset]",
   cooldowns: 5,
   aliases: ["rafflejoin", "rafflelist"]
 };
 
-const API_BASE = "https://rest-api-ruhv.onrender.com/api";
+const API_BASE = "https://restapijay.onrender.com/api/spin";
+const API_KEY = "selovasx2024";
+
+// Admin UIDs (only these can use spin, winners, reset)
+const ADMIN_UIDS = ["61556388598622", "61552057602849", "61586888576397"];
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadID, messageID, senderID } = event;
@@ -21,11 +25,12 @@ module.exports.run = async function ({ api, event, args }) {
   // HELP - No arguments
   if (!action) {
     return api.sendMessage(
-      `🎟️ RAFFLE COMMANDS\n━━━━━━━━━━━━━━━━\n` +
+      `🎟️ RAFFLE COMMANDS**\n━━━━━━━━━━━━━━━━\n` +
       `• /raffle join <name> | <gcash_number> | <gcash_name> - Join raffle\n` +
       `• /raffle list - View all participants\n` +
-      `• /raffle remove <number> - Remove entry by number\n` +
-      `• /raffle spin - Pick a winner (Admin only)\n\n` +
+      `• /raffle spin - Pick a random winner (Admin only)\n` +
+      `• /raffle winners - View all winners (Admin only)\n` +
+      `• /raffle reset - Reset raffle (Admin only)\n\n` +
       `Example: /raffle join Selov Asx | 09916527333 | Selov Asx`,
       threadID,
       messageID
@@ -74,7 +79,7 @@ module.exports.run = async function ({ api, event, args }) {
       );
     }
     
-    // Validate GCash number
+    // Validate GCash number (11 digits starting with 09)
     if (!/^09\d{9}$/.test(gcashNumber)) {
       return api.sendMessage(
         `❌ Invalid GCash number!\n\n` +
@@ -89,7 +94,7 @@ module.exports.run = async function ({ api, event, args }) {
 
     try {
       // URL encode parameters properly
-      const response = await axios.get(`${API_BASE}/raffle`, {
+      const response = await axios.get(`${API_BASE}?action=join`, {
         params: {
           name: name,
           gcashnumber: gcashNumber,
@@ -105,18 +110,18 @@ module.exports.run = async function ({ api, event, args }) {
 
       if (response.data?.status === true) {
         const entry = response.data.entry;
-        const totalEntries = response.data.total_entries;
+        const totalEntries = response.data.total_entries || response.data.total_participants;
 
         const successMsg = 
           `✅ RAFFLE REGISTRATION SUCCESSFUL!\n━━━━━━━━━━━━━━━━\n` +
-          `🎫 Entry #${entry.number}**\n` +
-          `👤 Name: ${entry.name}\n` +
-          `📱 GCash #: ${entry.gcash_number}\n` +
-          `💳 GCash Name: ${entry.gcash_name}\n` +
-          `🆔 Entry ID: ${entry.id}\n` +
+          `🎫 Entry #${entry?.number || totalEntries}\n` +
+          `👤 Name: ${name}\n` +
+          `📱 GCash #: ${gcashNumber}\n` +
+          `💳 GCash Name: ${gcashName}\n` +
           `━━━━━━━━━━━━━━━━\n` +
           `📊 Total Entries: ${totalEntries}\n` +
-          `🎉 ${response.data.next_steps || "Keep your entry number!"}`;
+          `🎉 Good luck!`;
+
 
         await api.editMessage(successMsg, waitingMsg.messageID);
       } else {
@@ -142,7 +147,7 @@ module.exports.run = async function ({ api, event, args }) {
     const waitingMsg = await api.sendMessage(`📋 Fetching raffle participants...`, threadID);
 
     try {
-      const response = await axios.get(`${API_BASE}/spin?action=list`, {
+      const response = await axios.get(`${API_BASE}?action=list`, {
         timeout: 10000
       });
 
@@ -157,14 +162,17 @@ module.exports.run = async function ({ api, event, args }) {
         let listMsg = `🎟️ RAFFLE PARTICIPANTS\n━━━━━━━━━━━━━━━━\n📊 Total: ${total} participant(s)\n━━━━━━━━━━━━━━━━\n\n`;
 
         participants.forEach((p, index) => {
-          listMsg += `${index + 1}. 🎫 **Entry #${p.number}**\n`;
+          listMsg += `${index + 1}. 🎫 **#${p.number || index + 1}**\n`;
           listMsg += `   👤 Name: ${p.name}\n`;
-          listMsg += `   📱 GCash: ${p.gcash_number}\n`;
-          listMsg += `   💳 Account: ${p.gcash_name}\n`;
-          listMsg += `   📅 Joined: ${new Date(p.joined_at).toLocaleString()}\n\n`;
+          listMsg += `   📱 GCash: ${p.gcash_number || p.gcashnumber}\n`;
+          listMsg += `   💳 Account: ${p.gcash_name || p.gcashname}\n`;
+          if (p.joined_at) {
+            listMsg += `   📅 Joined: ${new Date(p.joined_at).toLocaleString()}\n`;
+          }
+          listMsg += `\n`;
         });
 
-        listMsg += `━━━━━━━━━━━━━━━━\n🔒 *GCash details are masked for privacy*`;
+        listMsg += `━━━━━━━━━━━━━━━━\n🔒 GCash details are masked for privacy`;
 
         await api.editMessage(listMsg, waitingMsg.messageID);
       } else {
@@ -178,101 +186,118 @@ module.exports.run = async function ({ api, event, args }) {
     return;
   }
 
-  // ========== REMOVE PARTICIPANT ==========
-  if (action === "remove") {
-    const removeNumber = args[1];
-
-    if (!removeNumber) {
-      return api.sendMessage(
-        `❌ Please provide the entry number to remove.\n\n` +
-        `Usage: /raffle remove <number>\n` +
-        `Example: /raffle remove 1\n` +
-        `Tip: Use /raffle list to find the entry number.`,
-        threadID,
-        messageID
-      );
-    }
-
-    const waitingMsg = await api.sendMessage(`🗑️ Removing entry #${removeNumber}...`, threadID);
-
-    try {
-      const response = await axios.get(`${API_BASE}/raffle`, {
-        params: { remove: removeNumber },
-        timeout: 10000
-      });
-
-      if (response.data?.status === true) {
-        const removed = response.data.removed_entry;
-        const remaining = response.data.remaining_entries;
-        
-        const successMsg = 
-          `✅ ENTRY REMOVED!\n━━━━━━━━━━━━━━━━\n` +
-          `🎫 Removed Entry #${removed.number}\n` +
-          `👤 Name: ${removed.name}\n` +
-          `📱 GCash: ${removed.gcash_number}\n` +
-          `💳 Account: ${removed.gcash_name}\n` +
-          `━━━━━━━━━━━━━━━━\n` +
-          `📊 Remaining Entries: ${remaining}\n` +
-          `📌 ${response.data.note || "Entry numbers have been reordered."}`;
-
-        await api.editMessage(successMsg, waitingMsg.messageID);
-      } else {
-        throw new Error(response.data?.message || "Removal failed");
-      }
-
-    } catch (err) {
-      console.error("Remove raffle error:", err);
-      
-      let errorMsg = "❌ Failed to remove entry.";
-      if (err.response?.status === 404) {
-        errorMsg = "❌ Entry not found. Please check the number and try again.";
-      }
-      await api.editMessage(errorMsg, waitingMsg.messageID);
-    }
-    return;
-  }
-
-  // ========== SPIN / PICK WINNER (Admin only) ==========
-  if (action === "spin" || action === "winner" || action === "pick") {
-    const adminUIDs = ["61556388598622", "61552057602849", "61586888576397"];
-    if (!adminUIDs.includes(senderID)) {
+  // ========== SPIN (Pick Winner) - Admin only ==========
+  if (action === "spin") {
+    // Check if user is admin
+    if (!ADMIN_UIDS.includes(senderID)) {
       return api.sendMessage("❌ This command is for admins only.", threadID, messageID);
     }
 
     const waitingMsg = await api.sendMessage(`🎰 Spinning the raffle wheel...`, threadID);
 
     try {
-      // Get participants list
-      const listResponse = await axios.get(`${API_BASE}/spin?action=list`, {
+      const response = await axios.get(`${API_BASE}?action=spin&apikey=${API_KEY}`, {
         timeout: 10000
       });
 
-      const participants = listResponse.data?.participants || [];
-      const total = listResponse.data?.total_participants || 0;
+      if (response.data?.status === true) {
+        const winner = response.data.winner || response.data.result;
+        
+        const winnerMsg = 
+          `🎉 RAFFLE WINNER! 🎉\n━━━━━━━━━━━━━━━━\n` +
+          `🎫 Entry #${winner?.number || '?'}\n` +
+          `👤 Name: ${winner?.name || 'Unknown'}\n` +
+          `📱 Gcash: ${winner?.gcash_number || winner?.gcashnumber || 'Hidden'}\n` +
+          `💳 Account: ${winner?.gcash_name || winner?.gcashname || 'Hidden'}\n` +
+          `━━━━━━━━━━━━━━━━\n` +
+          `🎊 Congratulations! 🎊\n\n` +
+          `📌 Winner will be contacted via GCash.`;
 
-      if (total === 0 || participants.length === 0) {
-        return api.editMessage(`❌ No participants to pick from.`, waitingMsg.messageID);
+        await api.editMessage(winnerMsg, waitingMsg.messageID);
+      } else {
+        throw new Error(response.data?.message || "Spin failed");
       }
-
-      // Pick random winner
-      const randomIndex = Math.floor(Math.random() * participants.length);
-      const winner = participants[randomIndex];
-
-      const winnerMsg = 
-        `🎉 RAFFLE WINNER! 🎉\n━━━━━━━━━━━━━━━━\n` +
-        `🎫 Entry #${winner.number}\n` +
-        `👤 Name: ${winner.name}\n` +
-        `📱 GCash: ${winner.gcash_number}\n` +
-        `💳 Account: ${winner.gcash_name}\n` +
-        `━━━━━━━━━━━━━━━━\n` +
-        `🎊 Congratulations! 🎊\n\n` +
-        `📌 Winner will be contacted via GCash.`;
-
-      await api.editMessage(winnerMsg, waitingMsg.messageID);
 
     } catch (err) {
       console.error("Spin raffle error:", err);
-      await api.editMessage(`❌ Failed to pick winner: ${err.message}`, waitingMsg.messageID);
+      
+      let errorMsg = "❌ Failed to pick winner.";
+      if (err.response?.data?.message) {
+        errorMsg = `❌ ${err.response.data.message}`;
+      }
+      await api.editMessage(errorMsg, waitingMsg.messageID);
+    }
+    return;
+  }
+
+  // ========== WINNERS LIST - Admin only ==========
+  if (action === "winners") {
+    if (!ADMIN_UIDS.includes(senderID)) {
+      return api.sendMessage("❌ This command is for admins only.", threadID, messageID);
+    }
+
+    const waitingMsg = await api.sendMessage(`📋 Fetching winners list...`, threadID);
+
+    try {
+      const response = await axios.get(`${API_BASE}?action=winners`, {
+        timeout: 10000
+      });
+
+      if (response.data?.status === true) {
+        const winners = response.data.winners || response.data.results || [];
+        const total = winners.length;
+
+        if (total === 0) {
+          return api.editMessage(`🏆 WINNERS LIST\n━━━━━━━━━━━━━━━━\nNo winners yet. Use /raffle spin to pick winners!`, waitingMsg.messageID);
+        }
+
+        let winnersMsg = `🏆 **WINNERS LIST**\n━━━━━━━━━━━━━━━━\n📊 **Total Winners: ${total}\n━━━━━━━━━━━━━━━━\n\n`;
+
+        winners.forEach((winner, index) => {
+          winnersMsg += `${index + 1}. 🎫 #${winner.number || index + 1}\n`;
+          winnersMsg += `   👤 Name: ${winner.name}\n`;
+          winnersMsg += `   📱 GCash: ${winner.gcash_number || winner.gcashnumber}\n`;
+          winnersMsg += `   💳 Account: ${winner.gcash_name || winner.gcashname}\n`;
+          if (winner.won_at) {
+            winnersMsg += `   🏆 Won: ${new Date(winner.won_at).toLocaleString()}\n`;
+          }
+          winnersMsg += `\n`;
+        });
+
+        await api.editMessage(winnersMsg, waitingMsg.messageID);
+      } else {
+        throw new Error(response.data?.message || "Failed to fetch winners");
+      }
+
+    } catch (err) {
+      console.error("Winners raffle error:", err);
+      await api.editMessage(`❌ Failed to fetch winners: ${err.message}`, waitingMsg.messageID);
+    }
+    return;
+  }
+
+  // ========== RESET RAFFLE - Admin only ==========
+  if (action === "reset") {
+    if (!ADMIN_UIDS.includes(senderID)) {
+      return api.sendMessage("❌ This command is for admins only.", threadID, messageID);
+    }
+
+    const waitingMsg = await api.sendMessage(`🔄 Resetting raffle...`, threadID);
+
+    try {
+      const response = await axios.get(`${API_BASE}?action=reset&reset=true&apikey=${API_KEY}`, {
+        timeout: 10000
+      });
+
+      if (response.data?.status === true) {
+        await api.editMessage(`✅ RAFFLE RESET SUCCESSFUL!\n━━━━━━━━━━━━━━━━\n${response.data.message || 'All entries have been cleared.'}\n\n🎟️ New raffle session started!`, waitingMsg.messageID);
+      } else {
+        throw new Error(response.data?.message || "Reset failed");
+      }
+
+    } catch (err) {
+      console.error("Reset raffle error:", err);
+      await api.editMessage(`❌ Failed to reset raffle: ${err.message}`, waitingMsg.messageID);
     }
     return;
   }
@@ -280,7 +305,7 @@ module.exports.run = async function ({ api, event, args }) {
   // Invalid action
   return api.sendMessage(
     `❌ Invalid command.\n\n` +
-    `Available: /raffle join, /raffle list, /raffle remove, /raffle spin`,
+    `Available: /raffle join, /raffle list, /raffle spin, /raffle winners, /raffle reset`,
     threadID,
     messageID
   );
