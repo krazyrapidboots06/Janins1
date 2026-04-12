@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 module.exports.config = {
-  name: "humanize",
+  name: "aihumanize",
   version: "1.0",
   hasPermssion: 0,
   credits: "selov",
