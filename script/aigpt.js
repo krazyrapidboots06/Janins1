@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 module.exports.config = {
-  name: "gpt",
+  name: "aigpt",
   version: "5.0.0",
   role: 0,
   credits: "selov",
