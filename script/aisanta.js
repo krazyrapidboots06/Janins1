@@ -3,7 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 
 module.exports.config = {
-  name: "aiv3",
+  name: "aisanta",
   version: "1.0.0",
   role: 0,
   credits: "selov",
@@ -11,7 +11,7 @@ module.exports.config = {
   commandCategory: "ai",
   usages: "/aiv3 <question>",
   cooldowns: 5,
-  aliases: ["aitts", "voiceai"]
+  aliases: ["santa", "santaai"]
 };
 
 // Store user sessions
