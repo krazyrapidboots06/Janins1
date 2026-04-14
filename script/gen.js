@@ -4,67 +4,77 @@ const path = require("path");
 
 module.exports.config = {
   name: "gen",
-  version: "1.0.0",
+  version: "3.0.0",
   hasPermssion: 0,
-  credits: "Yasis",
-  description: "Generate AI images",
+  credits: "selov",
+  description: "Generate AI images using Pollinations",
   commandCategory: "ai",
   usages: "gen <prompt>",
-  cooldowns: 5
+  cooldowns: 10,
+  aliases: ["generate", "imagine", "draw"]
 };
 
 module.exports.run = async function ({ api, event, args }) {
-
   const { threadID, messageID } = event;
   const prompt = args.join(" ");
 
   if (!prompt) {
     return api.sendMessage(
-      "🖼 Please enter a prompt.\n\nExample:\n gen manwel yasis tayob",
+      "🖼 AI IMAGE GENERATOR\n━━━━━━━━━━━━━━━━\n" +
+      "Generate images from text descriptions.\n\n" +
+      "Usage: gen <prompt>\n" +
+      "Example: gen a beautiful sunset over mountains",
       threadID,
       messageID
     );
   }
+
+  const waitingMsg = await api.sendMessage("🎨 Generating your image... please wait.", threadID);
 
   try {
-
-    api.sendMessage("🎨 Generating your image... please wait.", threadID, messageID);
-
-    const apiUrl = `https://yin-api.vercel.app/ai/aiart?prompt=${encodeURIComponent(prompt)}`;
-
-    const res = await axios.get(apiUrl);
-
-    if (!res.data || !res.data.image) {
-      return api.sendMessage("❌ Failed to generate image.", threadID, messageID);
+    // Pollinations AI API
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
+    
+    // Download the image
+    const response = await axios.get(imageUrl, { 
+      responseType: "arraybuffer",
+      timeout: 60000
+    });
+    
+    if (!response.data || response.data.length < 1000) {
+      throw new Error("Invalid image data received");
     }
-
-    const imageUrl = res.data.image;
-
-    const imgPath = path.join(__dirname, "cache", `gen_${Date.now()}.jpg`);
-
-    const img = await axios.get(imageUrl, { responseType: "arraybuffer" });
-
-    fs.writeFileSync(imgPath, img.data);
-
-    api.sendMessage(
-      {
-        body: `🖼 Image generated for:\n${prompt}`,
-        attachment: fs.createReadStream(imgPath)
-      },
-      threadID,
-      () => fs.unlinkSync(imgPath),
-      messageID
-    );
-
+    
+    // Create cache directory
+    const cacheDir = path.join(__dirname, "cache");
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
+    
+    const imgPath = path.join(cacheDir, `gen_${Date.now()}.jpg`);
+    fs.writeFileSync(imgPath, Buffer.from(response.data));
+    
+    // Delete waiting message
+    await api.unsendMessage(waitingMsg.messageID);
+    
+    // Send the image
+    api.sendMessage({
+      body: `🖼 AI GENERATED IMAGE\n━━━━━━━━━━━━━━━━\n📝 Prompt: ${prompt}\n`,
+      attachment: fs.createReadStream(imgPath)
+    }, threadID, () => {
+      fs.unlinkSync(imgPath);
+    }, messageID);
+    
   } catch (err) {
-
-    console.error(err);
-
-    api.sendMessage(
-      "❌ Error generating image.",
-      threadID,
-      messageID
-    );
+    console.error("Gen Error:", err);
+    await api.unsendMessage(waitingMsg.messageID);
+    
+    let errorMsg = "❌ Failed to generate image.\n\n";
+    errorMsg += "💡Tips:\n";
+    errorMsg += "• Try a different prompt\n";
+    errorMsg += "• Wait a few seconds and try again\n";
+    errorMsg += "• The AI service may be busy";
+    
+    api.sendMessage(errorMsg, threadID, messageID);
   }
-
 };
