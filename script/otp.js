@@ -10,7 +10,7 @@ if (!global.userNumbers) global.userNumbers = new Map();
 module.exports.config = {
   name: "otp",
   version: "1.0.0",
-  role: 0,
+  role: 3,
   credits: "selov",
   description: "Generate temporary phone numbers and check OTP inbox",
   commandCategory: "tools",
